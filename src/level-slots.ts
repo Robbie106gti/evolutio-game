@@ -45,6 +45,8 @@ export function saveSlot(
 }
 export function unlocked(storage: SlotStorage, id: string) {
   if (id !== "predator-valley") return Object.hasOwn(LEVELS, id);
+  // An existing valley can be continued even when restored without First Grove.
+  if (storage.getItem(slotKey(id)) !== null) return true;
   const first = loadSlot(storage, "first-grove");
   return !!first?.level && levelComplete(LEVELS["first-grove"], first.level);
 }

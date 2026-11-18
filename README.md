@@ -21,7 +21,7 @@ The evolution journal shows named mouse lineages, parents, offspring, and trait 
 
 Generation advancement runs in a worker. Detailed mode simulates individual behaviour. Experimental approximate mode supports mice and bugs and trades behavioural fidelity for speed.
 
-Use Save island and Export backup. Saves belong to the browser and site address: localhost and GitHub Pages have separate storage. Export a backup before clearing site data. The simulation runs entirely on the device, without a server or user accounts. IndexedDB stores islands; older save formats migrate on load.
+Use Save island and Export backup. Saves belong to the browser and site address: localhost and GitHub Pages have separate storage. Export a backup before clearing site data. Use Import backup to restore a downloaded JSON file to its original island slot. The game asks before replacing an existing island. The simulation runs entirely on the device, without a server or user accounts. IndexedDB stores islands; older save formats migrate on load.
 
 This is a stylized simulation, not a scientific model. Reproduction records one genetic parent. Mouse ecological lineages are not proven separate species. Ancestry archives have bounded retention and label historical gaps. Fungi and worms are patch resources. Resource availability and survival pressures govern populations; dense worlds can still be expensive.
 

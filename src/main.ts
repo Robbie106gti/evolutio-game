@@ -11,6 +11,7 @@ import {
 import { supportsApproximation } from "./approximate.ts";
 import {
   islandStorage,
+  readBrowserSlot,
   saveBrowserSlot,
   saveJumpBackup,
   restoreJumpBackup,
@@ -77,6 +78,8 @@ profilePanel.innerHTML =
 document.querySelector("aside")!.append(profilePanel);
 let generationAdvance: GenerationAdvance | null = null;
 let advanceWorker: Worker | null = null;
+let islandTransition: "switch" | "advance" | "recovery" | "import" | null =
+  null;
 let world = new World();
 let levelProgress = initialProgress(world.level);
 let rate = 1,
@@ -104,7 +107,7 @@ try {
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.autoUpdate = false;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 $("scene").appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -394,12 +397,36 @@ renderer.domElement.addEventListener("pointermove", (e) => {
 renderer.domElement.addEventListener("pointerleave", () => {
   brushPreview.visible = false;
 });
-let down = { x: 0, y: 0 };
+const downPointers = new Set<number>();
+let islandTap: { id: number; x: number; y: number } | null = null;
 renderer.domElement.addEventListener("pointerdown", (e) => {
-  down = { x: e.clientX, y: e.clientY };
+  downPointers.add(e.pointerId);
+  islandTap =
+    downPointers.size === 1 && e.isPrimary && e.button === 0
+      ? { id: e.pointerId, x: e.clientX, y: e.clientY }
+      : null;
 });
+function movedBeyondTap(e: PointerEvent) {
+  return (
+    islandTap &&
+    Math.hypot(e.clientX - islandTap.x, e.clientY - islandTap.y) >
+      (e.pointerType === "touch" ? 10 : 6)
+  );
+}
+renderer.domElement.addEventListener("pointermove", (e) => {
+  if (islandTap?.id === e.pointerId && movedBeyondTap(e)) islandTap = null;
+});
+for (const event of ["pointercancel", "lostpointercapture"] as const) {
+  renderer.domElement.addEventListener(event, (e) => {
+    downPointers.delete(e.pointerId);
+    if (islandTap?.id === e.pointerId) islandTap = null;
+  });
+}
 renderer.domElement.addEventListener("pointerup", (e) => {
-  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) return;
+  const tapped = islandTap?.id === e.pointerId && !movedBeyondTap(e);
+  downPointers.delete(e.pointerId);
+  islandTap = null;
+  if (!tapped) return;
   const r = renderer.domElement.getBoundingClientRect();
   pointer.set(
     ((e.clientX - r.left) / r.width) * 2 - 1,
@@ -702,15 +729,27 @@ function updateUI() {
       return `<div class="plant-row"><b>${PLANTS[kind].label}</b><span>${plants.length} alive · Gen ${plants.length ? Math.max(...plants.map((p) => p.generation)) : "—"}</span><small>Mean growth ${mean.toFixed(2)} · ${kind === "grass" ? "Quick spreading" : kind === "bush" ? "Rich foliage" : "Long lived"}</small></div>`;
     })
     .join("");
-  $("events").innerHTML =
-    `<p class="note">${world.births} births · ${world.deaths} deaths · ${Math.floor(world.time)} seconds of island life</p>` +
-    (world.animals.length === 0
-      ? '<p class="note">The animal population has died out. Family and cause-of-death records remain available.</p>'
-      : world.events
-          .slice(0, 2)
-          .map((e) => `<p class="note">${e}</p>`)
-          .join("") ||
-        '<p class="note">The founders are exploring. The first babies will inherit their own small differences.</p>');
+  const notes =
+    world.animals.length === 0
+      ? [
+          "The animal population has died out. Family and cause-of-death records remain available.",
+        ]
+      : world.events.length
+        ? world.events.slice(0, 2)
+        : [
+            "The founders are exploring. The first babies will inherit their own small differences.",
+          ];
+  $("events").replaceChildren(
+    ...[
+      `${world.births} births · ${world.deaths} deaths · ${Math.floor(world.time)} seconds of island life`,
+      ...notes,
+    ].map((text) => {
+      const note = document.createElement("p");
+      note.className = "note";
+      note.textContent = text;
+      return note;
+    }),
+  );
   const panel = $("inspect");
   if (selected) selectedHome = null;
   const home = selectedHome
@@ -943,10 +982,14 @@ function chooseTool(tool: IslandTool) {
   $("world").dataset.tool = tool;
   $("tool-help").textContent = description[tool];
   $("plant-options").hidden = tool !== "plants";
-  document.querySelector(".hint")!.textContent =
+  $("desktop-hint").textContent =
     tool === "inspect"
       ? "Drag to orbit · Arrow keys to pan · Tap life to inspect"
       : "Tap the island to apply the brush · Drag to orbit · Esc to explore";
+  $("touch-hint").textContent =
+    tool === "inspect"
+      ? "Tap life to inspect · Drag to orbit · Pinch to zoom"
+      : "Tap to apply · Drag to orbit · Pinch to zoom";
   renderer.domElement.style.cursor = tool === "inspect" ? "grab" : "crosshair";
 }
 document
@@ -963,7 +1006,7 @@ window.addEventListener("keydown", (e) => {
 });
 chooseTool("inspect");
 $("reset").onclick = () => {
-  if (advanceWorker) return;
+  if (advanceWorker || islandTransition) return;
   if (
     !confirm(
       "Start a new island? This replaces your saved island in this browser.",
@@ -1014,9 +1057,11 @@ function updateJournalVisibility() {
   document
     .querySelector("main")!
     .classList.toggle("journal-collapsed", journalCollapsed);
-  $("journal-toggle").textContent = journalCollapsed
-    ? "Show journal"
-    : "Hide journal";
+  $("journal-verb").textContent = journalCollapsed ? "Show " : "Hide ";
+  $("journal-toggle").setAttribute(
+    "aria-label",
+    journalCollapsed ? "Show journal" : "Hide journal",
+  );
   $("journal-toggle").setAttribute("aria-expanded", String(!journalCollapsed));
 }
 $("journal-toggle").onclick = () => {
@@ -1125,7 +1170,7 @@ function saveIsland(): Promise<boolean> {
   return pendingSave;
 }
 async function writeIsland() {
-  if (advanceWorker) return false;
+  if (advanceWorker || islandTransition === "import") return false;
   if (saveBlocked) return false;
   ($("save") as HTMLButtonElement).disabled = true;
   $("save-status").textContent = "Saving island…";
@@ -1171,6 +1216,7 @@ try {
     "Save could not be loaded. It has not been overwritten. Save island to replace it.";
 }
 $("save").onclick = async () => {
+  if (islandTransition === "import") return;
   if (saveBlocked) {
     if (!confirm("Replace the unreadable save with this island?")) return;
     saveBlocked = false;
@@ -1204,8 +1250,9 @@ function lessonAction(metric: LevelObjective["metric"]) {
   if (levelProgress.completedObjectives.length > before) saveIsland();
 }
 async function showLevels() {
-  if (advanceWorker) return;
+  if (advanceWorker || islandTransition) return;
   if (!saveBlocked) await saveIsland();
+  if (advanceWorker || islandTransition) return;
   const dialog = $("level-select") as HTMLDialogElement;
   $("level-cards").innerHTML = levelCards(islandStorage);
   $("level-error").textContent = saveBlocked
@@ -1236,11 +1283,13 @@ $("lesson").addEventListener("click", (e) => {
   }
 });
 $("level-cards").addEventListener("click", async (e) => {
+  if (advanceWorker || islandTransition) return;
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>(
     "[data-open-level]",
   );
   if (!b) return;
   const id = b.dataset.openLevel!;
+  islandTransition = "switch";
   try {
     if (!unlocked(islandStorage, id))
       throw new Error("Complete First Grove to unlock predators.");
@@ -1263,32 +1312,7 @@ $("level-cards").addEventListener("click", async (e) => {
     }
     // Verify destination storage succeeds before replacing the active session.
     const nextRaw = await saveBrowserSlot(next, destinationRaw);
-    generationAdvance?.cancel();
-    $("advance-generations").textContent = "Run";
-    expectedSlotValue = nextRaw;
-    world = next.world;
-    levelProgress = next.level ?? initialProgress(world.level);
-    rate = next.rate;
-    paused = next.paused;
-    selected = next.selected;
-    followEnabled = next.follow ?? true;
-    selectedHome = null;
-    watchedHome = null;
-    acc = 0;
-    saveBlocked = false;
-    chooseTool("inspect");
-    $("pause").textContent = paused ? "▶" : "Ⅱ";
-    $("pause").setAttribute(
-      "aria-label",
-      paused ? "Resume simulation" : "Pause simulation",
-    );
-    document
-      .querySelectorAll<HTMLButtonElement>(".rate")
-      .forEach((b) =>
-        b.classList.toggle("active", Number(b.dataset.rate) === rate),
-      );
-    setChallenge(world.scarcity);
-    updateUI();
+    activateIsland(next, nextRaw);
     ($("level-select") as HTMLDialogElement).close();
     $("save-status").textContent =
       `${world.level.name} restored — separate save`;
@@ -1297,8 +1321,38 @@ $("level-cards").addEventListener("click", async (e) => {
       error instanceof Error
         ? error.message
         : "Could not switch islands. Saves preserved.";
+  } finally {
+    islandTransition = null;
   }
 });
+function activateIsland(next: Session, saved: string) {
+  generationAdvance?.cancel();
+  $("advance-generations").textContent = "Run";
+  expectedSlotValue = saved;
+  world = next.world;
+  levelProgress = next.level ?? initialProgress(world.level);
+  rate = next.rate;
+  paused = next.paused;
+  selected = next.selected;
+  followEnabled = next.follow ?? true;
+  selectedHome = null;
+  watchedHome = null;
+  acc = 0;
+  saveBlocked = false;
+  chooseTool("inspect");
+  $("pause").textContent = paused ? "▶" : "Ⅱ";
+  $("pause").setAttribute(
+    "aria-label",
+    paused ? "Resume simulation" : "Pause simulation",
+  );
+  document
+    .querySelectorAll<HTMLButtonElement>(".rate")
+    .forEach((b) =>
+      b.classList.toggle("active", Number(b.dataset.rate) === rate),
+    );
+  setChallenge(world.scarcity);
+  updateUI();
+}
 showLevels();
 
 function setAdvanceMode(active: boolean) {
@@ -1310,13 +1364,14 @@ function setAdvanceMode(active: boolean) {
   $("scene").inert = active;
   $("inspect").inert = active;
   document.querySelector<HTMLElement>("aside")!.inert = active;
-  document.querySelector<HTMLElement>(".island-actions")!.inert = active;
+  document.querySelector<HTMLElement>(".island-controls")!.inert = active;
   ($("levels-button") as HTMLButtonElement).disabled = active;
   document
     .querySelectorAll<HTMLButtonElement>(".rate")
     .forEach((b) => (b.disabled = active));
 }
 function finishAdvance(message: string) {
+  const returnFocus = $("advance-overlay").contains(document.activeElement);
   advanceWorker?.terminate();
   advanceWorker = null;
   generationAdvance?.cancel();
@@ -1325,21 +1380,23 @@ function finishAdvance(message: string) {
   last = performance.now();
   setAdvanceMode(false);
   ($("advance-generations") as HTMLButtonElement).disabled = false;
-  ($("stop-background-advance") as HTMLButtonElement).disabled = false;
+  $("stop-background-advance").removeAttribute("aria-disabled");
+  ($("pause-background-advance") as HTMLButtonElement).disabled = false;
   $("advance-generations").textContent = "Run";
   $("generation-status").textContent = message;
   $("pause").textContent = "▶";
   $("pause").setAttribute("aria-label", "Resume simulation");
   updateUI();
   draw(0);
-  saveIsland();
+  if (returnFocus) $("advance-generations").focus({ preventScroll: true });
 }
 $("generation-mode").onchange = updateUI;
 $("restore-jump").onclick = async () => {
-  if (advanceWorker) return;
+  if (advanceWorker || islandTransition) return;
+  islandTransition = "recovery";
   paused = true;
-  if (!(await saveIsland())) return;
   try {
+    if (!(await saveIsland())) return;
     const restored = await restoreJumpBackup(
       {
         world,
@@ -1365,18 +1422,33 @@ $("restore-jump").onclick = async () => {
       error instanceof Error
         ? error.message
         : "Recovery failed; current island preserved.";
+  } finally {
+    islandTransition = null;
   }
 };
 $("stop-background-advance").onclick = () => $("advance-generations").click();
+$("pause-background-advance").onclick = () => $("pause").click();
 $("advance-generations").onclick = async () => {
   if (advanceWorker) {
+    if ($("stop-background-advance").getAttribute("aria-disabled") === "true")
+      return;
     advanceWorker.postMessage({ type: "stop" });
     ($("advance-generations") as HTMLButtonElement).disabled = true;
-    ($("stop-background-advance") as HTMLButtonElement).disabled = true;
-    $("background-progress").textContent =
-      "Stopping and restoring your island…";
+    $("stop-background-advance").setAttribute("aria-disabled", "true");
+    ($("pause-background-advance") as HTMLButtonElement).disabled = true;
+    $("background-mode").textContent = "Saving your island…";
+    $("background-status").textContent = "Saving your island before returning.";
     return;
   }
+  if (islandTransition) return;
+  islandTransition = "advance";
+  try {
+    await startAdvance();
+  } finally {
+    islandTransition = null;
+  }
+};
+async function startAdvance() {
   // Preserve a recoverable checkpoint before handing simulation ownership over.
   if (!(await saveIsland())) {
     $("generation-status").textContent =
@@ -1407,10 +1479,24 @@ $("advance-generations").onclick = async () => {
       { type: "module" },
     );
     const worker = advanceWorker;
-    worker.onmessage = async (event) => {
-      if (advanceWorker !== worker) return;
-      const m = event.data;
-      try {
+    let pendingResult = Promise.resolve();
+    function enqueueResult(handle: () => void | Promise<void>) {
+      // Every write must use the slot value committed by the previous result.
+      pendingResult = pendingResult
+        .then(() => {
+          if (advanceWorker === worker) return handle();
+        })
+        .catch((error: unknown) => {
+          finishAdvance(
+            "Jump stopped: " +
+              (error instanceof Error
+                ? error.message
+                : "Could not restore result"),
+          );
+        });
+    }
+    worker.onmessage = ({ data: m }) => {
+      enqueueResult(async () => {
         if (m.type === "error") {
           finishAdvance(
             "Jump interrupted; restored the latest checkpoint. " + m.message,
@@ -1419,33 +1505,38 @@ $("advance-generations").onclick = async () => {
         }
         if (m.save) {
           const restored = decodeSave(m.save);
-          // A checkpoint is current simulation state, but remains unrendered.
-          world = restored.world;
-          levelProgress = restored.level ?? initialProgress(world.level);
           expectedSlotValue = await saveBrowserSlot(
             restored,
             expectedSlotValue,
           );
+          // Keep the latest durable checkpoint if a later write fails.
+          world = restored.world;
+          levelProgress = restored.level ?? initialProgress(world.level);
+          $("save-status").textContent = "Fast-forward progress saved";
         }
-        const progress = `${m.peak - generationAdvance!.start}/${count} generations · ${m.animals} animals · ${m.plants} plants · ${m.speed > 0 ? m.speed.toFixed(1) + "× simulation speed" : "Measuring speed…"}`;
-        $("generation-status").textContent = progress;
-        $("background-progress").textContent = progress;
+        const progress = $("generation-progress") as HTMLProgressElement;
+        const completed = Math.max(
+          0,
+          Math.min(count, m.peak - generationAdvance!.start),
+        );
+        const label = `${completed} of ${count} generations`;
+        if (progress.value !== completed)
+          $("background-status").textContent = label;
+        progress.value = completed;
+        $("background-progress").textContent = label;
+        $("background-detail").textContent =
+          `${m.animals} animals · ${m.plants} plants${m.speed > 0 && !paused ? ` · ${m.speed.toFixed(1)}× speed` : ""}`;
         if (m.type === "done")
           finishAdvance(
             `${approximate ? "Approximate · " : ""}${m.status} · Generation ${m.peak}`,
           );
-      } catch (error) {
-        finishAdvance(
-          "Jump stopped: " +
-            (error instanceof Error
-              ? error.message
-              : "Could not restore result"),
-        );
-      }
+      });
     };
     worker.onerror = () =>
-      finishAdvance(
-        "Worker failed; restored the latest checkpoint. Try reloading the game.",
+      enqueueResult(() =>
+        finishAdvance(
+          "Worker failed; restored the latest checkpoint. Try reloading the game.",
+        ),
       );
     paused = false;
     acc = 0;
@@ -1454,12 +1545,16 @@ $("advance-generations").onclick = async () => {
     $("advance-generations").textContent = "Stop";
     $("background-mode").textContent = approximate
       ? "Approximate fast-forward"
-      : "Advancing behind the scenes";
-    $("background-detail").textContent = approximate
-      ? "Experimental patch encounters · brain decisions skipped · recovery save kept"
-      : "Full-speed simulation · view frozen · saves every 30 seconds";
-    $("background-progress").textContent = "Preparing background simulation…";
+      : "Fast-forwarding";
+    $("background-progress").textContent = `0 of ${count} generations`;
+    const progress = $("generation-progress") as HTMLProgressElement;
+    progress.max = count;
+    progress.value = 0;
+    $("background-detail").textContent = "Preparing your island…";
+    $("background-status").textContent = "Fast-forward started.";
+    $("pause-background-advance").textContent = "Pause";
     setAdvanceMode(true);
+    $("pause-background-advance").focus({ preventScroll: true });
     worker.postMessage({
       type: "start",
       save: saved,
@@ -1473,7 +1568,7 @@ $("advance-generations").onclick = async () => {
         (error instanceof Error ? error.message : "Worker unavailable"),
     );
   }
-};
+}
 document.addEventListener("visibilitychange", () => {
   advanceWorker?.postMessage({
     type: "pause",
@@ -1485,10 +1580,19 @@ $("pause").addEventListener("click", () => {
     type: "pause",
     paused: paused || document.hidden,
   });
-  if (advanceWorker)
+  if (advanceWorker) {
+    const approximate =
+      ($("generation-mode") as HTMLSelectElement).value === "approximate";
     $("background-mode").textContent = paused
-      ? "Background jump paused"
-      : "Advancing behind the scenes";
+      ? "Fast-forward paused"
+      : approximate
+        ? "Approximate fast-forward"
+        : "Fast-forwarding";
+    $("pause-background-advance").textContent = paused ? "Resume" : "Pause";
+    $("background-status").textContent = paused
+      ? "Fast-forward paused."
+      : "Fast-forward resumed.";
+  }
 });
 
 $("lineage-overlay-toggle").onclick = () => {
@@ -1650,4 +1754,63 @@ $("export-island").onclick = () => {
   link.download = `evolutio-${world.level.id}-backup.json`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+const backupFile = $("island-backup-file") as HTMLInputElement;
+const importButton = $("import-island") as HTMLButtonElement;
+const importStatus = $("import-status");
+const maxBackupBytes = 128 * 1024 * 1024;
+importButton.onclick = () => {
+  if (!advanceWorker && !islandTransition) backupFile.click();
+};
+backupFile.onchange = async () => {
+  const file = backupFile.files?.[0];
+  backupFile.value = "";
+  if (!file || advanceWorker || islandTransition) return;
+
+  islandTransition = "import";
+  importButton.setAttribute("aria-disabled", "true");
+  importStatus.textContent = "Checking island backup…";
+  try {
+    if (file.size > maxBackupBytes)
+      throw new Error("This backup is larger than the 128 MB import limit.");
+    let next: Session;
+    try {
+      next = decodeSave(await file.text());
+    } catch {
+      throw new Error(
+        "Choose a valid Evolutio backup JSON file from a supported version.",
+      );
+    }
+
+    // Drain an autosave that was already running before reading the destination.
+    await pendingSave;
+    const { id, name } = next.world.level;
+    const existing = await readBrowserSlot(id);
+    const active = id === world.level.id;
+    if (
+      (existing !== null || active) &&
+      !confirm(
+        `Replace your ${name} island with this backup? This will overwrite any existing progress for ${name} in this browser.`,
+      )
+    ) {
+      importStatus.textContent = "Import cancelled.";
+      return;
+    }
+
+    const saved = await saveBrowserSlot(next, existing);
+    if (active) {
+      activateIsland(next, saved);
+      $("save-status").textContent = `${name} restored from backup`;
+      importStatus.textContent = `Imported ${name}.`;
+    } else {
+      importStatus.textContent = `Imported ${name}. Open it from Your islands.`;
+    }
+  } catch (error) {
+    importStatus.textContent =
+      error instanceof Error ? error.message : "Could not import this island.";
+  } finally {
+    islandTransition = null;
+    importButton.removeAttribute("aria-disabled");
+  }
 };

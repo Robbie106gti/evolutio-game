@@ -23,16 +23,24 @@ export async function initializeStorage() {
     slotKey(level.id),
     jumpBackupKey(level.id),
   ])) {
-    const value = await new Promise<string | undefined>((resolve, reject) => {
-      const request = db.transaction("slots").objectStore("slots").get(key);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    const raw = value ?? localStorage.getItem(key);
+    const raw = await readStoredValue(key);
     if (raw != null) cache.set(key, raw);
   }
   db.onversionchange = () => db.close();
 }
+async function readStoredValue(key: string) {
+  const value = await new Promise<string | undefined>((resolve, reject) => {
+    const request = db.transaction("slots").objectStore("slots").get(key);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  return value ?? localStorage.getItem(key);
+}
+
+export function readBrowserSlot(id: string) {
+  return readStoredValue(slotKey(id));
+}
+
 export async function saveBrowserSlot(
   session: Session,
   expected: string | null,

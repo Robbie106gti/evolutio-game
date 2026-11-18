@@ -6,6 +6,7 @@ function assert(value: unknown, message: string): asserts value {
 for (const seed of [7823, 42, 123]) {
   const a = new World(seed),
     b = new World(seed);
+  const founders = a.animals.length;
   for (let i = 0; i < 1800; i++) {
     a.step(0.1);
     b.step(0.1);
@@ -26,9 +27,10 @@ for (const seed of [7823, 42, 123]) {
     "Valid genomes and state",
   );
   assert(
-    a.animals.length + a.eggs.length <= 560 && a.plants.length < 20000,
-    "Animal limits and resource-bounded vegetation remain stable",
+    a.animals.length === founders + a.births - a.deaths,
+    `Animal population must match founders, births and deaths (seed ${seed})`,
   );
+  assert(a.plants.length < 20000, `Vegetation remains bounded (seed ${seed})`);
   console.log({
     seed,
     population: a.animals.length,
