@@ -14,9 +14,14 @@ export function selectedFamily(
     parent: selected
       ? world.animals.find((a) => a.id === selected.parent)
       : undefined,
+    otherParent: selected?.otherParent
+      ? world.animals.find((a) => a.id === selected.otherParent)
+      : undefined,
     children: selected
       ? world.animals
-          .filter((a) => a.parent === selected.id)
+          .filter(
+            (a) => a.parent === selected.id || a.otherParent === selected.id,
+          )
           .sort((a, b) => b.id - a.id)
       : [],
   };

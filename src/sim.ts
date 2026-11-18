@@ -115,6 +115,14 @@ export * from "./model.ts";
 export * from "./species.ts";
 export * from "./biology.ts";
 export * from "./brain.ts";
+import {
+  mixGenes,
+  reproductiveSex,
+  stepReproduction,
+  usesMate,
+  type MateNeighborhoods,
+} from "./reproduction.ts";
+
 export class World {
   readonly #level: Readonly<LevelDefinition>;
   get level() {
@@ -167,6 +175,7 @@ export class World {
   deaths = 0;
   plantBirths = 0;
   scarcity = false;
+  naturalReproduction: boolean;
   events: string[] = [];
   history: (Partial<PopulationCounts> & {
     time: number;
@@ -179,9 +188,11 @@ export class World {
   constructor(
     seed: number | undefined = undefined,
     level: Readonly<LevelDefinition> = SANDBOX,
+    naturalReproduction = false,
   ) {
     this.#level = level;
     this.seed = seed ?? level.seed;
+    this.naturalReproduction = naturalReproduction;
     this.weather.moisture = level.climate.moisture;
     this.weather.cloud = level.climate.cloud;
     for (let i = 0; i < level.initial.plantAttempts; i++) this.addPlant();
@@ -289,6 +300,7 @@ export class World {
     parent?: Animal,
     requestedSpecies?: Species,
     asEgg = false,
+    inheritance?: { mate: Animal } | { clone: true },
   ) {
     const species =
       parent?.species ??
@@ -300,8 +312,20 @@ export class World {
           z: parent.z + this.range(-0.7, 0.7),
         }
       : this.point();
-    const genes = parent ? this.mutate(parent.genes) : this.genes();
-    if (parent) retainExpressedGenes(genes, parent, () => this.random());
+    const mate =
+      inheritance && "mate" in inheritance ? inheritance.mate : undefined;
+    const clone = inheritance && "clone" in inheritance;
+    const genes = !parent
+      ? this.genes()
+      : clone
+        ? { ...parent.genes, weights: [...parent.genes.weights] }
+        : this.mutate(
+            mate
+              ? mixGenes(parent.genes, mate.genes, () => this.random())
+              : parent.genes,
+          );
+    if (parent && !inheritance)
+      retainExpressedGenes(genes, parent, () => this.random());
     if (!parent) {
       const rhythm = rhythmDefaults(species);
       genes.activityPhase = wrapPhase(
@@ -395,11 +419,18 @@ export class World {
       angle: this.range(0, 6.28),
       energy: parent ? 24 : 80,
       age: 0,
-      generation: parent ? parent.generation + 1 : 1,
+      generation: parent
+        ? Math.max(parent.generation, mate?.generation ?? 0) + 1
+        : 1,
       cooldown: 15,
       genes,
       state: "Exploring",
     };
+    if (mate) a.otherParent = mate.id;
+    if (parent && clone) {
+      a.cloned = true;
+      a.sex = reproductiveSex(parent);
+    }
     a.mouseLineage = inheritMouseLineage(a, parent);
     if (parent && !laysEggs(species)) {
       const den = this.dens.find(
@@ -521,10 +552,20 @@ export class World {
     }
     return this.plants.at(-1);
   }
-  layClutch(parent: Animal, available = Infinity) {
+  layClutch(
+    parent: Animal,
+    available = Infinity,
+    inheritance?: { mate: Animal } | { clone: true },
+  ) {
     const profile = SPECIES[parent.species];
     for (let n = 0; n < Math.min(profile.clutchSize, available); n++) {
-      const embryo = this.addAnimal(parent.kind, parent, undefined, true);
+      const embryo = this.addAnimal(
+        parent.kind,
+        parent,
+        undefined,
+        true,
+        inheritance,
+      );
       this.animals.pop();
       const waterEgg = SPECIES[parent.species].capabilities.waterEggs;
       if (waterEgg) {
@@ -612,7 +653,13 @@ export class World {
       decay: 0,
     });
   }
-  step(dt: number, approximate = false) {
+  step(
+    dt: number,
+    approximate = false,
+    findMates?: (
+      animals: Animal[],
+    ) => Promise<MateNeighborhoods | undefined> | undefined,
+  ) {
     if (approximate && !supportsApproximation(this))
       throw new Error(
         "Approximate mode currently supports mice and bugs only.",
@@ -686,6 +733,16 @@ export class World {
         wet = depthAt(a.x, a.z) > a.altitude + 0.1;
       const waterEgg = SPECIES[a.species].capabilities.waterEggs;
       const moisture = landAt(this.weather.land, a.x, a.z).moisture;
+      if (this.naturalReproduction && a.species === "turtle") {
+        const temperature = regionalClimate(
+          this.time,
+          this.weather,
+          a.x,
+          a.z,
+        ).temperature;
+        egg.incubationHeat =
+          (egg.incubationHeat ?? 0) + dt * (temperature - 22);
+      }
       if (waterEgg !== wet) egg.health -= dt * 3;
       if (!waterEgg && moisture < 0.08)
         egg.health -=
@@ -697,6 +754,8 @@ export class World {
           this.random() <
           survival + 0.15 * a.genes.immunity + 0.2 * egg.concealment
         ) {
+          if (egg.incubationHeat !== undefined)
+            a.sex = egg.incubationHeat >= 0 ? "female" : "male";
           this.animals.push(a);
           this.births++;
         } else this.eggsLost++;
@@ -1566,6 +1625,31 @@ export class World {
           stationary = true;
         }
         // Drying is a comfort goal; food, thirst, threats and water escape take priority.
+        const social =
+          this.naturalReproduction && a.reproductive?.target
+            ? animalById.get(a.reproductive.target)
+            : undefined;
+        if (
+          !need &&
+          !threat &&
+          !thirsty &&
+          !stationary &&
+          social &&
+          social.energy > 0 &&
+          a.energy >= 80
+        ) {
+          const retreating = (a.reproductive?.rivalUntil ?? 0) > this.time;
+          need = retreating
+            ? { x: 2 * a.x - social.x, z: 2 * a.z - social.z }
+            : social;
+          needState = retreating
+            ? "Retreating from rival"
+            : a.state === "Challenging rival"
+              ? "Challenging rival"
+              : "Courting";
+          stationary =
+            !retreating && Math.hypot(a.x - social.x, a.z - social.z) < 1;
+        }
         if (
           !aquatic(a.species) &&
           !threat &&
@@ -1812,6 +1896,9 @@ export class World {
         }
         // Prepare a birth site; existing nests/dens are reused while a brood depends on them.
         if (
+          (!this.naturalReproduction ||
+            !usesMate(a.species) ||
+            a.reproductive?.due !== undefined) &&
           !dependent &&
           !threat &&
           !a.nursery &&
@@ -2231,6 +2318,7 @@ export class World {
         }
         a.energy = Math.min(a.energy, 140);
         if (
+          (!this.naturalReproduction || !usesMate(a.species)) &&
           a.energy >
             (["cat", "fox", "wolf", "snake", "crocodile"].includes(a.species)
               ? 70
@@ -2277,6 +2365,24 @@ export class World {
           a.deathCause = "old_age";
         }
       }
+    if (
+      this.naturalReproduction &&
+      Math.floor(this.time + 1e-8) > Math.floor(previousTime + 1e-8)
+    ) {
+      const reproductionStart = profiling ? performance.now() : 0;
+      const planning = findMates?.(this.animals);
+      if (planning)
+        return planning.then((neighbors) => {
+          stepReproduction(this, depthAt, neighbors);
+          measured("simulation: reproduction", reproductionStart);
+          this.#finishStep(animalsStart);
+        });
+      stepReproduction(this, depthAt);
+      measured("simulation: reproduction", reproductionStart);
+    }
+    this.#finishStep(animalsStart);
+  }
+  #finishStep(animalsStart: number) {
     for (const animal of this.animals)
       this.highestGeneration = Math.max(
         this.highestGeneration,
@@ -2312,14 +2418,23 @@ export class World {
     this.animals = this.animals.filter((a) => a.energy > 0);
     // Keep recent history plus all direct parents of living creatures, bounded for browser storage.
     if (this.deceased.length > 1200) {
-      const parents = new Set(this.animals.map((a) => a.parent));
-      const protectedRecords = this.deceased.filter((a) => parents.has(a.id));
+      const pendingMates = new Set(
+        this.animals.flatMap((a) => a.reproductive?.mate ?? []),
+      );
+      const parents = new Set(
+        this.animals.flatMap((a) => [a.parent, a.otherParent]),
+      );
+      const protectedRecords = this.deceased.filter(
+        (a) => parents.has(a.id) && !pendingMates.has(a.id),
+      );
+      const recent = this.deceased.filter(
+        (a) => !parents.has(a.id) && !pendingMates.has(a.id),
+      );
       this.deceased = [
-        ...this.deceased
-          .filter((a) => !parents.has(a.id))
-          .slice(-(1200 - protectedRecords.length)),
+        ...recent,
         ...protectedRecords,
-      ];
+        ...this.deceased.filter((a) => pendingMates.has(a.id)),
+      ].slice(-1200);
     }
     this.deaths += before - this.animals.length;
     this.events = this.events.slice(0, 5);

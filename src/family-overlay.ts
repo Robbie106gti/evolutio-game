@@ -26,9 +26,13 @@ export class FamilyOverlay {
     this.rings.count = 0;
     const members = [
       ...(family.parent ? [{ animal: family.parent, color: "#4cb6d3" }] : []),
+      ...(family.otherParent
+        ? [{ animal: family.otherParent, color: "#4cb6d3" }]
+        : []),
       ...family.children.map((animal) => ({ animal, color: "#b07ae2" })),
     ];
     for (const { animal, color } of members) {
+      if (this.rings.count === this.rings.instanceMatrix.count) break;
       this.dummy.position.set(
         animal.x,
         terrainHeight(animal.x, animal.z, world.weather.land) + 0.04,

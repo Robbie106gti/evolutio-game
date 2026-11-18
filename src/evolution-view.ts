@@ -135,7 +135,9 @@ export function evolutionJournal(w: World, state: EvolutionView) {
         20,
       );
     const children = archive.family
-      .filter((r) => r.parent === state.animal)
+      .filter(
+        (r) => r.parent === state.animal || r.otherParent === state.animal,
+      )
       .sort(
         (a, b) =>
           Number(living.has(b.id)) - Number(living.has(a.id)) || b.id - a.id,
@@ -145,13 +147,26 @@ export function evolutionJournal(w: World, state: EvolutionView) {
       return `<button class="evo-node ${id === state.animal ? "chosen" : ""}" data-evo-family="${id}"><b>${SPECIES[r.species].label} #${id} · G${r.generation}</b><span>${living.has(id) ? living.get(id)!.state : r.died !== null ? `Died on day ${day(r.died)}` : "Not present in the current population"}</span></button>`;
     };
     const parent = a ? records.get(a.parent) : undefined;
-    content = `<div class="evo-columns"><section><h3>Family tree</h3><p>The simulation records one genetic parent per offspring. Select any relative to explore their family.</p><ol class="evo-tree">${path.missing !== null ? `<li class="evo-gap">Parent #${path.missing}: record unavailable</li>` : ""}${path.truncated ? '<li class="evo-gap">Showing the nearest 20 generations. Select an older ancestor to go farther.</li>' : ""}${path.chain
+    content = `<div class="evo-columns"><section><h3>Family tree</h3><p>The tree follows one line at a time. Select either recorded parent to explore their side of the family.</p><ol class="evo-tree">${path.missing !== null ? `<li class="evo-gap">Parent #${path.missing}: record unavailable</li>` : ""}${path.truncated ? '<li class="evo-gap">Showing the nearest 20 generations. Select an older ancestor to go farther.</li>' : ""}${path.chain
       .slice()
       .reverse()
       .map((r) => `<li>${node(r.id)}</li>`)
       .join(
         "",
-      )}</ol></section><section><h3>${a ? `${SPECIES[a.species].label} #${a.id}` : "Select an animal"}</h3>${a ? `<p>Generation ${a.generation} · born around day ${day(a.born)}.</p>${living.has(a.id) ? `<button class="primary" data-evo-watch="${a.id}">Watch on island ↗</button>` : ""}${a.branch !== null ? `<button data-evo-branch="${a.branch}">Explore lineage →</button>` : ""}<h4>Inherited traits</h4><table class="evo-table"><thead><tr><th>Trait</th><th>This animal</th><th>From parent</th></tr></thead><tbody>${labels.map((label, i) => `<tr><th>${label}</th><td>${fmt(a.traits[i])}</td><td>${parent ? delta(a.traits[i], parent.traits[i]) : "Unknown"}</td></tr>`).join("")}</tbody></table>` : "<p>Select an animal on the island, then reopen the journal.</p>"}<h4>Recorded offspring · ${children.length}</h4>${
+      )}</ol></section><section><h3>${a ? `${SPECIES[a.species].label} #${a.id}` : "Select an animal"}</h3>${
+      a
+        ? `<p>Generation ${a.generation} · born around day ${day(a.born)}.</p>${living.has(a.id) ? `<button class="primary" data-evo-watch="${a.id}">Watch on island ↗</button>` : ""}${a.branch !== null ? `<button data-evo-branch="${a.branch}">Explore lineage →</button>` : ""}<h4>${a.cloned ? "Clone parent" : "Genetic parents"}</h4>${
+            [a.parent, a.otherParent]
+              .filter(Boolean)
+              .map((id) =>
+                records.has(id!)
+                  ? node(id!)
+                  : `<p>Parent #${id}: record unavailable</p>`,
+              )
+              .join("") || "<p>Founding animal</p>"
+          }${a.parent && !a.otherParent && !a.cloned ? "<p>One parent recorded.</p>" : ""}<h4>Inherited traits</h4><table class="evo-table"><thead><tr><th>Trait</th><th>This animal</th><th>Change from first parent</th></tr></thead><tbody>${labels.map((label, i) => `<tr><th>${label}</th><td>${fmt(a.traits[i])}</td><td>${parent ? delta(a.traits[i], parent.traits[i]) : "Unknown"}</td></tr>`).join("")}</tbody></table>`
+        : "<p>Select an animal on the island, then reopen the journal.</p>"
+    }<h4>Recorded offspring · ${children.length}</h4>${
       children
         .slice(0, 40)
         .map((r) => node(r.id))

@@ -13,6 +13,8 @@ export const JOURNAL_TRAITS = [
 export interface FamilyRecord {
   id: number;
   parent: number;
+  otherParent?: number;
+  cloned?: true;
   generation: number;
   species: Species;
   branch: number | null;
@@ -84,6 +86,8 @@ export function rememberAnimal(
     record = {
       id: a.id,
       parent: a.parent,
+      ...(a.otherParent === undefined ? {} : { otherParent: a.otherParent }),
+      ...(a.cloned ? { cloned: true } : {}),
       generation: a.generation,
       species: a.species,
       branch: a.mouseLineage?.id ?? null,
@@ -189,6 +193,13 @@ export function readEvolutionArchive(value: unknown): EvolutionArchive {
         id(r.id) &&
         r.id > 0 &&
         id(r.parent) &&
+        (r.otherParent === undefined ||
+          (id(r.otherParent) &&
+            r.otherParent > 0 &&
+            r.otherParent !== r.id &&
+            r.otherParent !== r.parent)) &&
+        (r.cloned === undefined ||
+          (r.cloned === true && r.parent > 0 && r.otherParent === undefined)) &&
         id(r.generation) &&
         r.generation > 0 &&
         Object.hasOwn(SPECIES, r.species) &&
@@ -239,6 +250,8 @@ export function readEvolutionArchive(value: unknown): EvolutionArchive {
     family: a.family.map((r) => ({
       id: r.id,
       parent: r.parent,
+      ...(r.otherParent === undefined ? {} : { otherParent: r.otherParent }),
+      ...(r.cloned ? { cloned: true } : {}),
       generation: r.generation,
       species: r.species,
       branch: r.branch,

@@ -3,9 +3,12 @@ import { establishedOmnivores } from "./animal-introduction.ts";
 import { GenerationAdvance } from "./generation-advance.ts";
 import { decodeSave, encodeSave, type Session } from "./save.ts";
 import { updateLevelProgress } from "./levels.ts";
+import { MateSearchPool } from "./mate-search-pool.ts";
+const matePool = new MateSearchPool();
 let session: Session | undefined;
 let advance: GenerationAdvance | undefined;
 let paused = false;
+let batching = false;
 let speedStartedAt = 0,
   speedStartedTime = 0,
   simulationSpeed = 0;
@@ -37,15 +40,23 @@ function report(done = false, checkpoint = false) {
     plants: session.world.plants.length,
     births: session.world.births,
     speed: simulationSpeed,
+    helpers: matePool.helpers,
     ...(done || checkpoint ? { save: snapshot() } : {}),
   });
 }
-function batch() {
+async function batch() {
+  if (!session || !advance || advance.done || paused || batching) return;
+  batching = true;
   try {
-    if (!session || !advance || advance.done || paused) return;
     // Prioritize throughput. Yield between short batches so incoming pause/stop
     // messages can run; individual world steps remain deterministic and intact.
-    advance.run(session.world, 40);
+    if (session.world.naturalReproduction)
+      await advance.runParallel(
+        session.world,
+        (animals) => matePool.find(animals),
+        () => paused,
+      );
+    else advance.run(session.world, 40);
     const now = performance.now();
     if (now - speedStartedAt >= 1000) {
       simulationSpeed =
@@ -56,6 +67,11 @@ function batch() {
     }
     if (advance.done) {
       report(true);
+      matePool.close();
+      return;
+    }
+    if (paused) {
+      report(false, true);
       return;
     }
     if (now - lastCheckpoint >= 30000) {
@@ -67,11 +83,14 @@ function batch() {
     }
     timer = setTimeout(batch, 0);
   } catch (error) {
+    matePool.close();
     self.postMessage({
       type: "error",
       message:
         error instanceof Error ? error.message : "Worker simulation failed",
     });
+  } finally {
+    batching = false;
   }
 }
 self.onmessage = (event: MessageEvent) => {
@@ -97,7 +116,10 @@ self.onmessage = (event: MessageEvent) => {
     } else if (message.type === "stop" && advance) {
       clearTimeout(timer);
       advance.cancel();
-      report(true);
+      if (!batching) {
+        report(true);
+        matePool.close();
+      }
     } else if (message.type === "pause") {
       paused = message.paused;
       clearTimeout(timer);
@@ -105,7 +127,7 @@ self.onmessage = (event: MessageEvent) => {
         speedStartedAt = performance.now();
         speedStartedTime = session?.world.time ?? 0;
         batch();
-      } else if (session) report(false, true);
+      } else if (session && !batching) report(false, true);
     }
   } catch (error) {
     self.postMessage({

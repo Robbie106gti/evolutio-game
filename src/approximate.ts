@@ -55,6 +55,8 @@ interface Patch {
 }
 // Experimental patch encounters. Individuals and finite food pools remain real;
 // exact paths, brain decisions and encounters are deliberately approximated.
+import { usesMate } from "./reproduction.ts";
+
 export function stepApproximateAnimals(
   w: World,
   dt: number,
@@ -328,6 +330,19 @@ export function stepApproximateAnimals(
         const drink = riverDrinkPoint(a.x, a.z, w.ponds);
         angle = Math.atan2(drink.z - a.z, drink.x - a.x);
         a.state = "Seeking water";
+      } else if (
+        w.naturalReproduction &&
+        a.reproductive?.target &&
+        a.energy >= 80
+      ) {
+        const partner = byId.get(a.reproductive.target);
+        if (partner && partner.energy > 0) {
+          const retreating = (a.reproductive.rivalUntil ?? 0) > w.time;
+          angle =
+            Math.atan2(partner.z - a.z, partner.x - a.x) +
+            (retreating ? Math.PI : 0);
+          a.state = retreating ? "Retreating from rival" : "Courting";
+        }
       }
       const reach = Math.min(LAND_STEP * 0.5, speed * dt * 1.5),
         nx = a.x + Math.cos(angle) * reach,
@@ -362,6 +377,7 @@ export function stepApproximateAnimals(
       continue;
     }
     if (
+      (!w.naturalReproduction || !usesMate(a.species)) &&
       a.energy > 74 &&
       a.hydration > 55 &&
       a.cooldown <= 0 &&

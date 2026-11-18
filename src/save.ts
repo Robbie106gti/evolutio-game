@@ -51,7 +51,7 @@ export function encodeSave(session: Session): string {
   )
     throw new Error("World and level progress do not match");
   return JSON.stringify({
-    version: 34,
+    version: 35,
     savedAt: new Date().toISOString(),
     ...session,
     level: progress,
@@ -71,9 +71,10 @@ export function decodeSave(raw: string): Session {
   if (
     ![
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-      22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34,
+      22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
     ].includes(data?.version) ||
     !w ||
+    (data.version >= 35 && typeof w.naturalReproduction !== "boolean") ||
     ![1, 3, 8].includes(data.rate) ||
     typeof data.paused !== "boolean" ||
     !number(data.selected, -LAND_SIDE * LAND_SIDE)
@@ -194,6 +195,9 @@ export function decodeSave(raw: string): Session {
         number(e.duration, 1, 100) &&
         number(e.health, 0, 100) &&
         number(e.concealment, 0, 1) &&
+        (e.incubationHeat === undefined ||
+          (e.embryo.species === "turtle" &&
+            number(e.incubationHeat, -10000, 10000))) &&
         typeof e.buried === "boolean",
     ) ||
     !number(w.eggsLaid) ||
@@ -313,6 +317,44 @@ export function decodeSave(raw: string): Session {
     ...w.deceased,
     ...w.eggs.map((e: any) => e.embryo),
   ]) {
+    if (
+      (a.sex !== undefined && a.sex !== "female" && a.sex !== "male") ||
+      (a.otherParent !== undefined &&
+        (!id(a.otherParent) ||
+          a.otherParent >= w.nextId ||
+          a.otherParent === a.id ||
+          a.otherParent === a.parent)) ||
+      (a.cloned !== undefined &&
+        (a.cloned !== true || a.otherParent !== undefined || !a.parent))
+    )
+      fail();
+    if (a.reproductive !== undefined) {
+      const r = a.reproductive;
+      if (
+        !r ||
+        typeof r !== "object" ||
+        Array.isArray(r) ||
+        (r.target !== undefined &&
+          (!id(r.target) || r.target >= w.nextId || r.target === a.id)) ||
+        (r.mate !== undefined &&
+          (!id(r.mate) || r.mate >= w.nextId || r.mate === a.id)) ||
+        (r.mate === undefined) !== (r.due === undefined) ||
+        (r.due !== undefined && !number(r.due)) ||
+        (r.rivalUntil !== undefined && !number(r.rivalUntil)) ||
+        (r.transitionDue !== undefined &&
+          (a.species !== "fish" || !number(r.transitionDue))) ||
+        (r.isolatedSince !== undefined && !number(r.isolatedSince, 0, w.time))
+      )
+        fail();
+      a.reproductive = {
+        target: r.target,
+        mate: r.mate,
+        due: r.due,
+        rivalUntil: r.rivalUntil,
+        isolatedSince: r.isolatedSince,
+        transitionDue: r.transitionDue,
+      };
+    }
     if (data.version < 4) {
       a.hydration ??= 90;
       a.home ??= 0;
@@ -637,7 +679,11 @@ export function decodeSave(raw: string): Session {
       w.highestGeneration = Math.max(w.highestGeneration, a.generation);
   }
   // Rebuild only known fields; never copy arbitrary saved object properties onto the class.
-  const world = new World(undefined, LEVELS[level.id]);
+  const world = new World(
+    undefined,
+    LEVELS[level.id],
+    data.version >= 35 && w.naturalReproduction,
+  );
   for (const key of [
     "seed",
     "highestGeneration",

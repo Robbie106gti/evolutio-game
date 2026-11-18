@@ -56,6 +56,7 @@ import "./island-controls.css";
 import "./reading-panels.css";
 import { renderAnimalInspector } from "./inspector";
 import { FamilyOverlay } from "./family-overlay";
+import { BreedingView, breedingAnimals } from "./breeding-view.ts";
 import { selectedFamily, followShift } from "./family";
 import { EnvironmentView } from "./environment-view";
 import { climate, regionalClimate, DAY_LENGTH } from "./ecology";
@@ -80,7 +81,7 @@ let generationAdvance: GenerationAdvance | null = null;
 let advanceWorker: Worker | null = null;
 let islandTransition: "switch" | "advance" | "recovery" | "import" | null =
   null;
-let world = new World();
+let world = new World(undefined, undefined, true);
 let levelProgress = initialProgress(world.level);
 let rate = 1,
   paused = false,
@@ -176,6 +177,7 @@ const environmentView = new EnvironmentView(scene, world);
 const skyView = new SkyView($("world"));
 const organisms = new OrganismMeshes(scene);
 const familyOverlay = new FamilyOverlay(scene);
+const breedingView = new BreedingView(scene);
 const lineageOverlay = new LineageOverlay(scene);
 let showLineages = false;
 const selection = new THREE.Mesh(
@@ -312,6 +314,7 @@ function draw(dt: number) {
   }
   lineageOverlay.update(world, showLineages, selected);
   const family = familyOverlay.update(world, selected);
+  breedingView.draw(world);
   if (followEnabled && family.living) {
     const shift = followShift(controls.target, family.living, dt);
     controls.target.add(new THREE.Vector3(shift.x, shift.y, shift.z));
@@ -619,10 +622,15 @@ function updateUI() {
   if (family.selected) {
     const chip = (a: Animal, role: string) =>
       `<button data-family-animal="${a.id}" class="family-chip ${role}">${role === "parent" ? "Parent" : "Child"} #${a.id} · G${a.generation}<small>${a.state}</small></button>`;
-    const content = `<div class="watch-title">${family.living ? (followEnabled ? "Following" : "Selected") + " #" + selected + " · Generation " + family.selected.generation : "Family of #" + selected + " · Deceased"}</div><div class="family-colors"><span>◉ Selected</span><span>◉ Parent</span><span>◉ Offspring</span></div><div class="family-chips">${family.parent ? chip(family.parent, "parent") : '<span class="empty-family">' + (family.selected.parent ? "No living parent" : "Founder") + "</span>"}${family.children.map((a) => chip(a, "child")).join("") || '<span class="empty-family">No living offspring yet</span>'}</div><div class="watch-tip">Orbit and zoom while following. Tap a relative to switch.</div>`;
+    const content = `<div class="watch-title">${family.living ? (followEnabled ? "Following" : "Selected") + " #" + selected + " · Generation " + family.selected.generation : "Family of #" + selected + " · Deceased"}</div><div class="family-colors"><span>◉ Selected</span><span>◉ Parent</span><span>◉ Offspring</span></div><div class="family-chips">${[family.parent, family.otherParent].map((parent) => (parent ? chip(parent, "parent") : "")).join("") || '<span class="empty-family">' + (family.selected.parent ? "No living parent" : "Founder") + "</span>"}${family.children.map((a) => chip(a, "child")).join("") || '<span class="empty-family">No living offspring yet</span>'}</div><div class="watch-tip">Orbit and zoom while following. Tap a relative to switch.</div>`;
     if (watch.innerHTML !== content) watch.innerHTML = content;
   }
   ($("youngest") as HTMLButtonElement).disabled = world.animals.length === 0;
+  const breeding = breedingAnimals(world);
+  breedingView.setAnimals(breeding);
+  $("enable-breeding").hidden = world.naturalReproduction;
+  $("breeding-guide").hidden = !world.naturalReproduction;
+  ($("watch-breeding") as HTMLButtonElement).disabled = breeding.length === 0;
   const sleepers = world.animals.filter((a) => a.state === "Sleeping");
   $("sleepers").textContent = `Watch a sleeper · ${sleepers.length} asleep`;
   ($("sleepers") as HTMLButtonElement).disabled = sleepers.length === 0;
@@ -921,6 +929,26 @@ $("introduce").onclick = () => {
   updateUI();
   saveIsland();
 };
+$("enable-breeding").onclick = () => {
+  if (advanceWorker || islandTransition) return;
+  world.naturalReproduction = true;
+  updateUI();
+  saveIsland();
+};
+$("watch-breeding").onclick = () => {
+  const animals = breedingAnimals(world);
+  const animal =
+    animals[
+      (animals.findIndex((candidate) => candidate.id === selected) + 1) %
+        animals.length
+    ];
+  if (!animal) return;
+  selected = animal.id;
+  selectedHome = null;
+  followEnabled = true;
+  updateUI();
+  $("world").scrollIntoView({ block: "start", behavior: "instant" });
+};
 $("youngest").onclick = () => {
   const animal = world.animals.reduce<Animal | undefined>(
     (best, a) => (!best || a.age < best.age ? a : best),
@@ -1015,7 +1043,7 @@ $("reset").onclick = () => {
     return;
   generationAdvance?.cancel();
   $("advance-generations").textContent = "Run";
-  world = new World(world.level.seed, world.level);
+  world = new World(world.level.seed, world.level, true);
   selectedHome = null;
   watchedHome = null;
   levelProgress = initialProgress(world.level);
@@ -1299,7 +1327,7 @@ $("level-cards").addEventListener("click", async (e) => {
     const savedCurrent = saveBlocked || (await saveIsland());
     preserveBeforeSwitch(saveBlocked, () => savedCurrent);
     const next: Session = loaded ?? {
-      world: new World(undefined, LEVELS[id]),
+      world: new World(undefined, LEVELS[id], true),
       level: initialProgress(LEVELS[id]),
       rate: 1,
       paused: false,
@@ -1525,7 +1553,7 @@ async function startAdvance() {
         progress.value = completed;
         $("background-progress").textContent = label;
         $("background-detail").textContent =
-          `${m.animals} animals · ${m.plants} plants${m.speed > 0 && !paused ? ` · ${m.speed.toFixed(1)}× speed` : ""}`;
+          `${m.animals} animals · ${m.plants} plants${m.speed > 0 && !paused ? ` · ${m.speed.toFixed(1)}× speed` : ""}${m.helpers > 0 ? ` · ${m.helpers + 1} workers` : ""}`;
         if (m.type === "done")
           finishAdvance(
             `${approximate ? "Approximate · " : ""}${m.status} · Generation ${m.peak}`,

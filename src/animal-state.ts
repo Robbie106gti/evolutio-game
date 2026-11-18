@@ -1,5 +1,8 @@
 export const ANIMAL_STATES = [
   "Exploring",
+  "Courting",
+  "Challenging rival",
+  "Retreating from rival",
   "Fleeing",
   "Hunting",
   "Foraging",

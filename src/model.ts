@@ -76,6 +76,17 @@ export interface Genes {
 }
 
 export interface Animal {
+  sex?: "female" | "male";
+  otherParent?: number;
+  cloned?: true;
+  reproductive?: {
+    target?: number;
+    rivalUntil?: number;
+    mate?: number;
+    due?: number;
+    isolatedSince?: number;
+    transitionDue?: number;
+  };
   hasEatenBug: boolean;
   expression: Expression;
   mouseLineage: MouseLineage | null;
@@ -155,6 +166,7 @@ export interface Plant {
 }
 
 export interface Egg {
+  incubationHeat?: number;
   concealment: number;
   buried: boolean;
   embryo: Animal;

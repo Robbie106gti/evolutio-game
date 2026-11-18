@@ -3,6 +3,7 @@ import { EXPRESSED_TRAITS } from "./expression.ts";
 import { dailyRhythm, rhythmLabel, phaseDelta } from "./rhythm.ts";
 import { type Animal, type Genes, type BrainActivity } from "./model.ts";
 import type { World } from "./sim.ts";
+import { reproductiveSex, usesMate } from "./reproduction.ts";
 import {
   lifeStage,
   lifespan,
@@ -202,10 +203,21 @@ export function renderAnimalInspector(
   const member = (b: Animal) =>
     `<button class="family-member" data-animal="${b.id}"><b>${SPECIES[b.species].label} #${b.id}</b><span>Gen ${b.generation} · ${world.animals.some((c) => c.id === b.id) ? lifeStage(b) : "Deceased"} ↗</span></button>`;
   const children = all
-    .filter((b) => b.parent === a.id)
+    .filter((b) => b.parent === a.id || b.otherParent === a.id)
     .sort((a, b) => b.id - a.id);
+  const parents = [a.parent, a.otherParent].flatMap((id) => {
+    if (!id) return [];
+    const record = all.find((animal) => animal.id === id);
+    return record
+      ? member(record)
+      : `<p>Parent #${id} · Record unavailable</p>`;
+  });
+  const breeding =
+    world.naturalReproduction && usesMate(a.species)
+      ? `<p>${reproductiveSex(a) === "female" ? "Female" : "Male"}${a.reproductive?.transitionDue !== undefined ? " · Changing sex" : a.reproductive?.due !== undefined ? " · Expecting young" : ""}</p>`
+      : "";
   set(
     "animal-family",
-    `<p>${SPECIES[a.species].diet} · ${SPECIES[a.species].gait}. Colour and markings affect camouflage; eyesight, stride and cadence cost energy.</p><p>One-parent reproduction: babies inherit from one animal.</p><div class="family-label">Parent</div>${parent ? member(parent) : `<p>${a.parent ? "#" + a.parent + " · Record unavailable" : "Founding animal"}</p>`}<div class="family-label">Offspring · ${children.length} recorded</div>${children.length ? children.map(member).join("") : "<p>No recorded offspring yet.</p>"}<p class="archive-note">Living animals and up to 1,200 deceased relatives are kept. Deaths before this update cannot be recovered.</p>`,
+    `${breeding}<div class="family-label">${a.cloned ? "Clone parent" : "Genetic parents"}</div>${parents.join("") || "<p>Founding animal</p>"}${a.parent && !a.otherParent && !a.cloned ? "<p>One parent recorded.</p>" : ""}<div class="family-label">Offspring · ${children.length} recorded</div>${children.length ? children.map(member).join("") : "<p>No recorded offspring yet.</p>"}<p class="archive-note">Living animals and up to 1,200 deceased relatives are kept.</p>`,
   );
 }
