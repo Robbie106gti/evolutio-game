@@ -1,0 +1,26 @@
+{
+  "name": "evolutio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node scripts/run-tests.mjs",
+    "test:quick": "node scripts/run-tests.mjs --quick",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\" \"src/**/*.css\" \"scripts/**/*.mjs\" package.json tsconfig.json",
+    "format:check": "prettier --check \"src/**/*.ts\" \"src/**/*.css\" \"scripts/**/*.mjs\" package.json tsconfig.json"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3",
+    "three": "^0.185.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.183.0",
+    "prettier": "^3.10.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  }
+}

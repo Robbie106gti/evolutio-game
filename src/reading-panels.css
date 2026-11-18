@@ -1,0 +1,359 @@
+/* Reading hierarchy for the journal and selected organism. */
+aside {
+  padding: 26px 22px;
+  color: #304c3c;
+}
+aside .panel-title {
+  margin-bottom: 20px;
+}
+aside > h2 {
+  font-size: 26px;
+  margin: 0 0 8px;
+}
+aside > .muted {
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 20px;
+  color: #60715e;
+}
+aside .stats {
+  margin: 18px 0;
+  padding: 16px 0;
+  gap: 10px;
+}
+aside .stats small {
+  font-size: 11px;
+  color: #60715e;
+}
+.journal-actions {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 20px;
+}
+.journal-actions .meet-animal {
+  margin: 0;
+  padding: 12px;
+  text-align: left;
+  font-size: 12px;
+  border-radius: 10px;
+  background: #eaf0e3;
+}
+.journal-section,
+.inspector-section {
+  border-top: 1px solid #dce3d5;
+  padding: 0;
+}
+.journal-section > summary,
+.inspector-section > summary {
+  cursor: pointer;
+  padding: 16px 0;
+  font-size: 14px;
+  font-weight: 650;
+  color: #304c3c;
+}
+.journal-section[open],
+.inspector-section[open] {
+  padding-bottom: 16px;
+}
+.journal-section summary:focus-visible,
+.inspector-section summary:focus-visible {
+  outline: 2px solid #52765e;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+aside h3 {
+  font-size: 13px;
+  margin: 16px 0 10px;
+}
+aside .weather-panel {
+  margin: 0;
+  padding: 12px;
+}
+aside .weather-panel p,
+aside .weather-panel small {
+  font-size: 12px;
+  line-height: 1.65;
+  color: #4f6552;
+}
+aside .weather-panel small {
+  display: block;
+  margin-top: 12px;
+}
+aside .challenge {
+  margin: 18px 0;
+  padding: 16px;
+  border-radius: 12px;
+}
+aside .challenge p,
+aside .save-panel p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+aside #species-list button,
+aside #mouse-branches button,
+aside #mortality button {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px;
+}
+aside .save-panel {
+  padding-top: 18px;
+  margin-top: 16px;
+}
+aside #save-status {
+  display: block;
+  font-size: 11px;
+  line-height: 1.6;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+#inspect,
+#inspect.compact {
+  width: 360px;
+  box-sizing: border-box;
+  padding: 22px;
+  background: #f7f8effa;
+  border: 1px solid #ffffffa8;
+  border-radius: 18px;
+  box-shadow: 0 12px 36px #243a2920;
+}
+#inspect.compact {
+  max-height: min(450px, calc(100dvh - 180px));
+}
+#inspect.compact > #animal-life {
+  display: block;
+}
+#inspect .eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  line-height: 1.6;
+}
+#inspect h3 {
+  font-size: 23px;
+  line-height: 1.25;
+  margin: 10px 0;
+}
+#inspect p {
+  font-size: 12px;
+  color: #526650;
+  line-height: 1.65;
+  margin: 10px 0;
+}
+#inspect .camera-buttons {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+#inspect .camera-buttons button {
+  font-size: 12px;
+  padding: 10px;
+  border: 1px solid #dce3d5;
+  border-radius: 10px;
+}
+#inspect .inspector-section > summary {
+  font-size: 13px;
+}
+#inspect .gene-table {
+  font-size: 11px;
+  width: 100%;
+}
+#inspect .gene-table th,
+#inspect .gene-table td {
+  padding: 7px 3px;
+}
+#inspect .section-label {
+  font-size: 10px;
+}
+#inspect #animal-life {
+  margin: 14px 0 18px;
+}
+#inspect .family-member {
+  font-size: 12px;
+}
+@media (max-width: 720px) {
+  #inspect,
+  #inspect.compact {
+    width: min(360px, calc(100vw - 24px));
+    left: 12px;
+    top: 78px;
+    max-height: 48dvh;
+    bottom: auto;
+    padding: 18px;
+  }
+  aside {
+    padding: 22px 18px;
+  }
+}
+
+.animal-vitals {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.animal-vitals > div {
+  padding: 10px 6px;
+  border-radius: 10px;
+  background: #eaf0e3;
+  text-align: center;
+}
+.animal-vitals b {
+  display: block;
+  font-size: 19px;
+  font-weight: 600;
+  color: #304c3c;
+}
+.animal-vitals span {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: #526650;
+}
+#inspect.compact .life-detail {
+  display: none;
+}
+/* Expanded details replace the floating family strip; family remains in its album. */
+main:has(#inspect:not(.compact):not([hidden])) #family-watch {
+  display: none;
+}
+#inspect > .close {
+  position: sticky;
+  top: 0;
+  float: right;
+  margin: -10px -10px 0 0;
+  z-index: 2;
+  background: #f7f8ef;
+}
+
+.introduce-controls {
+  padding: 12px;
+  background: #eaf0e3;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.introduce-controls label {
+  font-size: 12px;
+  display: grid;
+  gap: 5px;
+}
+.introduce-controls select {
+  padding: 8px;
+  border: 1px solid #cdd9c8;
+  border-radius: 8px;
+  color: #304c3c;
+  background: #f7f8ef;
+}
+#add-animals {
+  background: #355b44;
+  color: white;
+  align-self: end;
+}
+#animal-add-status {
+  flex-basis: 100%;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Welcome copy yields the island to play after the first 90 simulation seconds. */
+[data-welcome],
+#world > .hint {
+  transition:
+    opacity 0.6s ease,
+    visibility 0.6s;
+}
+main.settled [data-welcome],
+main.settled #world[data-tool="inspect"] > .hint {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-welcome],
+  #world > .hint {
+    transition: none;
+  }
+}
+
+/* Explicit island/time context and an optional full-width world. */
+#world > .world-label {
+  padding: 9px 12px;
+  border-radius: 12px;
+  color: #304b3d;
+  background: rgba(247, 248, 238, 0.94);
+  font-size: 12px;
+  letter-spacing: 0;
+  font-weight: 400;
+  flex-wrap: wrap;
+  max-width: calc(100% - 48px);
+}
+#world > .world-label > span:last-child {
+  color: #304b3d;
+}
+#world > header {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+#world > header .brand {
+  margin-right: auto;
+}
+#journal-toggle {
+  white-space: nowrap;
+}
+main.journal-collapsed #world {
+  width: 100%;
+  height: 100dvh;
+}
+#island-journal[hidden] {
+  display: none;
+}
+@media (max-width: 720px) {
+  #world > header {
+    gap: 6px;
+  }
+  #world > header .brand {
+    flex-basis: 100%;
+  }
+  #world > .world-label {
+    left: 16px;
+    font-size: 11px;
+  }
+  main.journal-collapsed #world {
+    min-height: 0;
+  }
+}
+
+#guide {
+  width: min(520px, calc(100vw - 32px));
+  padding: 28px;
+}
+#guide h2 {
+  font-size: 24px;
+  padding-right: 32px;
+  margin: 0 0 22px;
+}
+.help-topics {
+  margin: 0;
+}
+.help-topics dt {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 18px 0 5px;
+}
+.help-topics dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #526b59;
+}
+#guide .help-context {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 20px 0;
+}
+#help {
+  white-space: nowrap;
+}

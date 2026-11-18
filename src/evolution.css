@@ -1,0 +1,225 @@
+#evolution-journal {
+  width: min(1000px, 94vw);
+  max-width: 94vw;
+  max-height: 90vh;
+  box-sizing: border-box;
+  padding: 28px;
+  border: 1px solid #dbe4d4;
+  border-radius: 22px;
+  background: #f7f8ee;
+  color: #294536;
+  overflow: auto;
+}
+#evolution-journal::backdrop {
+  background: #122b2680;
+}
+#evolution-journal header {
+  position: relative;
+  inset: auto;
+  display: block;
+  padding: 0 42px 0 0;
+  margin: 0;
+  width: auto;
+}
+#evolution-journal h2 {
+  margin: 6px 0 20px;
+}
+#evolution-journal .evo-close {
+  position: absolute;
+  right: 0;
+  top: 0;
+  padding: 8px 12px;
+}
+#evolution-journal nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+#evolution-journal nav [aria-pressed="true"],
+#evolution-journal .primary {
+  background: #355b44;
+  color: white;
+}
+#evolution-journal p {
+  line-height: 1.55;
+  font-size: 14px;
+}
+.evo-coverage,
+.evo-gap {
+  padding: 12px;
+  border-radius: 10px;
+  background: #eaf0e2;
+  color: #60745d;
+}
+.evo-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 22px 0;
+}
+.evo-summary div {
+  padding: 16px;
+  border-radius: 14px;
+  background: #eaf0e2;
+}
+.evo-summary b {
+  display: block;
+  font-size: 28px;
+}
+.evo-summary span {
+  font-size: 12px;
+}
+.evo-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  align-items: start;
+}
+.evo-node {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 8px 0;
+  padding: 12px;
+  border: 1px solid #d7e1ce;
+  border-radius: 12px;
+  background: #fffdf4;
+  color: #294536;
+}
+.evo-node span {
+  display: block;
+  font-size: 12px;
+  margin-top: 6px;
+  color: #66785e;
+}
+.evo-node.chosen {
+  border-color: #426b57;
+  background: #e3eedc;
+}
+.evo-share {
+  height: 5px;
+  border-radius: 6px;
+  background: linear-gradient(
+    to right,
+    #739367 var(--share),
+    #e3e9dd var(--share)
+  );
+}
+.evo-branch-row {
+  margin-bottom: 18px;
+}
+.evo-tree {
+  list-style: none;
+  padding-left: 16px;
+  border-left: 2px solid #9eb69a;
+}
+.evo-tree li {
+  position: relative;
+  margin: 14px 0;
+}
+.evo-tree li::before {
+  content: "";
+  position: absolute;
+  left: -18px;
+  top: 22px;
+  width: 14px;
+  border-top: 2px solid #9eb69a;
+}
+.evo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 12px 0 22px;
+}
+.evo-table th,
+.evo-table td {
+  padding: 9px 5px;
+  border-bottom: 1px solid #dfe6d9;
+  text-align: right;
+}
+.evo-table th:first-child {
+  text-align: left;
+}
+.evo-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 16px 0;
+}
+.evo-chart text {
+  font: 16px system-ui;
+  fill: #53694e;
+}
+#evolution-journal select {
+  max-width: 100%;
+  font-size: 13px;
+}
+@media (max-width: 650px) {
+  .evo-columns {
+    grid-template-columns: 1fr;
+  }
+  .evo-summary {
+    gap: 6px;
+  }
+  .evo-summary div {
+    padding: 10px;
+  }
+  .evo-summary b {
+    font-size: 22px;
+  }
+  #evolution-journal {
+    padding: 18px;
+  }
+}
+
+.lineage-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.lineage-badge i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: 0 0 12px;
+  border: 1px solid #203d3360;
+}
+.evo-node > .mouse-portrait {
+  width: 95px;
+  height: 65px;
+  float: right;
+}
+.evo-node:has(.mouse-portrait) {
+  min-height: 96px;
+}
+.mouse-portrait {
+  width: 100%;
+  height: auto;
+}
+.lineage-portraits {
+  display: flex;
+  gap: 8px;
+}
+.lineage-portraits figure {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  background: #eaf0e2;
+  border-radius: 12px;
+  text-align: center;
+  padding: 6px;
+}
+.lineage-portraits figcaption {
+  font-size: 11px;
+}
+#lineage-overlay-help {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #526d59;
+}
+#lineage-overlay-toggle[aria-pressed="true"] {
+  background: #355b44;
+  color: white;
+}

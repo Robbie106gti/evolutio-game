@@ -1,0 +1,260 @@
+/* One dock layout owns family context, expanded panels and the bottom toolbar. */
+.island-controls {
+  position: absolute;
+  inset: auto 16px 16px;
+  transform: none;
+  width: auto;
+  display: grid;
+  grid-template-columns: auto minmax(130px, 1fr) minmax(140px, 1fr);
+  gap: 8px;
+  align-items: end;
+  max-width: 680px;
+  margin: 0 auto;
+  pointer-events: none;
+}
+.island-controls .time-controls {
+  position: static;
+  grid-column: 1;
+  grid-row: 3;
+  padding: 5px;
+  border-radius: 14px;
+  gap: 2px;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.time-controls > span {
+  padding: 0 8px;
+}
+.island-controls .time-controls button {
+  min-width: 36px;
+  min-height: 34px;
+}
+.island-controls .generation-controls,
+.island-controls .island-actions,
+.island-controls .generation-controls[open],
+.island-controls .island-actions[open] {
+  display: contents;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.island-controls details > summary {
+  grid-row: 3;
+  pointer-events: auto;
+  background: #f5f7ebf5;
+  border: 1px solid #ffffffa8;
+  border-radius: 14px;
+  padding: 13px 12px;
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.island-controls .generation-controls > summary {
+  grid-column: 2;
+}
+.island-controls .island-actions > summary {
+  grid-column: 3;
+}
+.island-controls details[open] > summary {
+  background: #355b44;
+  color: white;
+}
+.island-controls summary:focus-visible {
+  outline: 3px solid #91bca4;
+  outline-offset: 2px;
+}
+.island-controls .control-panel {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  pointer-events: auto;
+  box-sizing: border-box;
+  padding: 18px;
+  background: #f5f7ebfa;
+  border: 1px solid #ffffffb8;
+  border-radius: 16px;
+  box-shadow: 0 8px 30px #233c2920;
+  max-height: min(42vh, 330px);
+  overflow-y: auto;
+}
+.island-controls details:not([open]) > .control-panel {
+  display: none;
+}
+.island-controls .generation-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.island-controls .generation-panel label {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.island-controls .generation-panel span {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 11px;
+}
+.island-controls #advance-generations {
+  padding: 8px 18px;
+  background: #355b44;
+  color: white;
+}
+.island-controls .tool-buttons {
+  margin-top: 0;
+}
+.island-controls #family-watch {
+  position: static;
+  grid-row: 1;
+  grid-column: 1 / -1;
+  width: auto;
+  max-height: 120px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 14px;
+  pointer-events: auto;
+  box-sizing: border-box;
+}
+#family-watch[hidden] {
+  display: none;
+}
+#family-watch .family-colors {
+  margin: 5px 0;
+}
+#family-watch .family-chips {
+  padding-bottom: 0;
+}
+#family-watch > p {
+  display: none;
+}
+.island-controls #tool-feedback {
+  grid-row: 4;
+  grid-column: 1 / -1;
+  margin: 0;
+}
+#world > .hint {
+  bottom: 76px;
+  pointer-events: none;
+}
+#world:has(#family-watch:not([hidden])) > .hint,
+#world:has(.island-controls details[open]) > .hint {
+  display: none;
+}
+@media (max-width: 720px) {
+  .island-controls {
+    inset: auto 10px 10px;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .island-controls .time-controls {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+  .island-controls details > summary {
+    grid-row: 4;
+  }
+  .island-controls .generation-controls > summary {
+    grid-column: 1;
+  }
+  .island-controls .island-actions > summary {
+    grid-column: 2;
+  }
+  .island-controls #tool-feedback {
+    grid-row: 5;
+  }
+  .island-controls #family-watch {
+    max-height: 104px;
+  }
+  .island-controls .control-panel {
+    max-height: 32vh;
+    padding: 12px;
+  }
+}
+@media (max-height: 560px) {
+  .island-controls #family-watch {
+    max-height: 76px;
+  }
+  .island-controls .control-panel {
+    max-height: 30vh;
+  }
+}
+/* Let the explicit panel participate in the dock grid across native details wrappers. */
+.island-controls details::details-content {
+  display: contents;
+}
+#family-watch .watch-tip {
+  display: none;
+}
+#world:has(#family-watch:not([hidden])) .legend,
+#world:has(.island-controls details[open]) .legend {
+  display: none;
+}
+
+#advance-overlay {
+  position: absolute;
+  z-index: 12;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(380px, calc(100% - 40px));
+  box-sizing: border-box;
+  padding: 22px;
+  border-radius: 18px;
+  text-align: center;
+}
+#advance-overlay[hidden] {
+  display: none;
+}
+#advance-overlay p {
+  font-size: 13px;
+}
+#advance-overlay small {
+  display: block;
+  color: #657b62;
+  font-size: 11px;
+}
+#advance-overlay button {
+  margin-top: 16px;
+  background: #355b44;
+  color: white;
+  padding: 10px 18px;
+  border-radius: 10px;
+}
+.advancing-offscreen #scene {
+  filter: saturate(0.55) brightness(0.8);
+  pointer-events: none;
+}
+.advancing-offscreen #family-watch,
+.advancing-offscreen .hint,
+.advancing-offscreen .legend {
+  visibility: hidden;
+}
+/* Close buttons keep their focus ring inside the panel's rounded edge. */
+.close {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  top: 10px;
+  right: 10px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  border-radius: 50%;
+  font-size: 22px;
+}
+.close:focus-visible {
+  outline: 2px solid #52765e;
+  outline-offset: -3px;
+  background: #e8edde;
+}
+#inspect .eyebrow,
+dialog > h2 {
+  padding-right: 32px;
+}
