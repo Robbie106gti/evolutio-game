@@ -11,6 +11,8 @@ import {
 } from "./population-history.ts";
 import { supportsApproximation } from "./approximate.ts";
 import {
+  archivedIslands,
+  rotateIsland,
   islandStorage,
   readBrowserSlot,
   saveBrowserSlot,
@@ -1038,31 +1040,29 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") chooseTool("inspect");
 });
 chooseTool("inspect");
-$("reset").onclick = () => {
-  if (advanceWorker || islandTransition) return;
-  if (
-    !confirm(
-      "Start a new island? This replaces your saved island in this browser.",
-    )
-  )
-    return;
-  generationAdvance?.cancel();
-  $("advance-generations").textContent = "Run";
-  world = new World(world.level.seed, world.level, true);
-  selectedHome = null;
-  watchedHome = null;
-  levelProgress = initialProgress(world.level);
-  saveBlocked = false;
-  acc = 0;
-  chooseTool("inspect");
-  selected = 0;
-  paused = false;
-  $("pause").textContent = "Ⅱ";
-  $("pause").setAttribute("aria-label", "Pause simulation");
-  setChallenge(false);
-  updateUI();
-  saveIsland();
-};
+async function changeMap(archive?: string) {
+  if (advanceWorker || islandTransition || saveBlocked) return;
+  islandTransition = "import";
+  try {
+    if (pendingSave) await pendingSave;
+    const current = { world, level: levelProgress, rate, paused, selected, follow: followEnabled };
+    const level = world.level;
+    const destination = archive ?? {
+      world: new World(crypto.getRandomValues(new Uint32Array(1))[0], level, true, true),
+      level: initialProgress(level), rate: 1, paused: false, selected: 0, follow: true,
+    };
+    const result = await rotateIsland(current, expectedSlotValue, destination);
+    activateIsland(result.next, result.raw);
+    ($("level-select") as HTMLDialogElement).close();
+    $("save-status").textContent = "Previous island archived.";
+  } catch (error) {
+    $("level-error").textContent = error instanceof Error ? error.message : "Could not archive this island.";
+  } finally {
+    islandTransition = null;
+  }
+}
+$("reset").onclick = showLevels;
+$("fresh-map").onclick = () => changeMap();
 function setChallenge(value: boolean) {
   world.scarcity = value;
   $("challenge-title").textContent = value ? "Lean times" : "Room to grow";
@@ -1291,6 +1291,21 @@ async function showLevels() {
   $("level-error").textContent = saveBlocked
     ? "Your sandbox save could not be loaded and is preserved. You can still start or continue another island."
     : "";
+  const archives = $("island-archives");
+  archives.replaceChildren();
+  ($("fresh-map") as HTMLButtonElement).disabled = saveBlocked;
+  try {
+    for (const key of await archivedIslands(world.level.id)) {
+      const date = key.split(".archive.")[1].slice(0, 24);
+      const button = document.createElement("button");
+      button.textContent = "Restore " + world.level.name + " · " + new Date(date).toLocaleString();
+      button.disabled = saveBlocked;
+      button.onclick = () => changeMap(key);
+      archives.append(button);
+    }
+  } catch {
+    $("level-error").textContent = "Archived saves could not be listed.";
+  }
   if (!dialog.open) dialog.showModal();
 }
 $("levels-button").onclick = showLevels;

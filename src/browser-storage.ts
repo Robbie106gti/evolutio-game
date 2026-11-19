@@ -149,3 +149,53 @@ export async function restoreJumpBackup(
   await writeRecovery(id, expected, packSave(encodeSave(current)), raw);
   return { session, raw };
 }
+
+const archivePrefix = (id: string) => slotKey(id) + ".archive.";
+export async function archivedIslands(id: string): Promise<string[]> {
+  const prefix = archivePrefix(id);
+  const request = db.transaction("slots").objectStore("slots").getAllKeys(IDBKeyRange.bound(prefix, prefix + "\uffff"));
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result.filter((key): key is string => typeof key === "string").reverse());
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Rotate the playing slot and its jump checkpoint together. An abort leaves
+// the original island and the complete archive intact, including on quota errors.
+export async function rotateIsland(current: Session, expected: string | null, destination: Session | string) {
+  const id = current.world.level.id, key = slotKey(id), recovery = jumpBackupKey(id);
+  const archive = archivePrefix(id) + new Date().toISOString() + "." + crypto.randomUUID();
+  let next: Session, raw: string;
+  let checkpoint: string | undefined;
+  if (typeof destination === "string") {
+    if (!destination.startsWith(archivePrefix(id))) throw new Error("Wrong island archive.");
+    const packed = await readStoredValue(destination);
+    if (!packed) throw new Error("Archive unavailable.");
+    const entry = JSON.parse(packed);
+    raw = entry.raw;
+    checkpoint = entry.checkpoint;
+    next = decodeSave(unpackSave(raw));
+  } else {
+    next = destination;
+    raw = packSave(encodeSave(next));
+  }
+  if (next.world.level.id !== id) throw new Error("Archive belongs to a different level.");
+  const previous = packSave(encodeSave(current));
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("slots", "readwrite"), store = tx.objectStore("slots");
+    const active = store.get(key), jump = store.get(recovery);
+    jump.onsuccess = () => {
+      if ((active.result ?? localStorage.getItem(key)) !== expected) { tx.abort(); return; }
+      store.add(JSON.stringify({raw: previous, checkpoint: jump.result}), archive);
+      store.put(raw, key);
+      if (checkpoint) store.put(checkpoint, recovery);
+      else store.delete(recovery);
+    };
+    tx.oncomplete = () => resolve();
+    tx.onabort = () => reject(new Error("Could not archive and switch. Check browser storage or another open tab."));
+  });
+  cache.set(key, raw);
+  if (checkpoint) cache.set(recovery, checkpoint);
+  else cache.delete(recovery);
+  return {next, raw};
+}

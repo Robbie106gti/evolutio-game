@@ -33,7 +33,7 @@ export const APP_SHELL = `
   )
   .join(
     "",
-  )}</select></label></div><p id="tool-help">Explore: tap an animal, plant or mushroom patch to inspect it.</p><button id="reset" class="reset-island">Start a fresh island</button></div></details><div id="tool-feedback" role="status" aria-live="polite"></div></div></section>
+  )}</select></label></div><p id="tool-help">Explore: tap an animal, plant or mushroom patch to inspect it.</p><button id="reset" class="reset-island">Archive &amp; start a new map</button></div></details><div id="tool-feedback" role="status" aria-live="polite"></div></div></section>
 <aside id="island-journal" aria-label="Island journal"><div class="panel-title"><span>Island journal</span><span class="pill">LIVE</span></div><h2>Your ecosystem</h2>
 <section id="lesson" class="glass" hidden></section>
 <div class="stats"><div><span id="population">72</span><small>animals</small></div><div><span id="generation">1</span><small title="Highest generation born on this island. Living animals may belong to earlier generations.">generation reached</small></div><div><span id="plants">160</span><small>plants</small></div></div>
@@ -45,7 +45,7 @@ export const APP_SHELL = `
 <div class="challenge"><div class="eyebrow">TRY AN EXPERIMENT</div><h3 id="challenge-title">Room to grow</h3><p id="challenge-text">Food is plentiful. Give your first generations time to settle in.</p><button id="scarcity">Try lean times <span>→</span></button></div>
 <details class="journal-section"><summary>Field notes</summary><div id="events"></div></details>
 <div class="save-panel"><button id="save">Save island</button><button id="export-island">Export backup</button><button id="import-island" type="button">Import backup</button><input id="island-backup-file" type="file" accept=".json,application/json" hidden><span id="save-status" role="status">Autosaves every 10 seconds</span><span id="import-status" role="status"></span><p>Saved in this browser.</p></div><div class="footer">Seed 7823 · Simulated on your device</div></aside>
-<dialog id="level-select" aria-labelledby="level-select-title"><button id="close-levels" class="close" aria-label="Close island selection">×</button><div class="eyebrow">CHOOSE YOUR NEXT DISCOVERY</div><h2 id="level-select-title">Your islands</h2><p>Learn step by step, or return to your sandbox. Each island saves separately in this browser.</p><div id="level-cards"></div><p id="level-error" role="status"></p></dialog>
+<dialog id="level-select" aria-labelledby="level-select-title"><button id="close-levels" class="close" aria-label="Close island selection">×</button><div class="eyebrow">CHOOSE YOUR NEXT DISCOVERY</div><h2 id="level-select-title">Your islands</h2><p>Learn step by step, or return to your sandbox. Each island saves separately in this browser.</p><div id="level-cards"></div><section><h3>Current island saves</h3><button id="fresh-map">Archive &amp; start a new map</button><div id="island-archives"></div></section><p id="level-error" role="status"></p></dialog>
 <dialog id="evolution-journal" aria-labelledby="evolution-title"></dialog>
 <section id="inspect" class="glass" hidden></section>
 <dialog id="guide" aria-labelledby="help-title"><button id="close-guide" class="close" aria-label="Close help">×</button><h2 id="help-title">Controls &amp; saving</h2>

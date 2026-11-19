@@ -62,6 +62,7 @@ import {
   landAt,
   landIndex,
   LAND_STEP,
+  LAND_SIDE,
   plantProductivity,
   riverDrinkPoint,
   SpatialGrid,
@@ -200,12 +201,22 @@ export class World {
     seed: number | undefined = undefined,
     level: Readonly<LevelDefinition> = SANDBOX,
     naturalReproduction = false,
+    varyLandscape = false,
   ) {
     this.#level = level;
     this.seed = seed ?? level.seed;
     this.naturalReproduction = naturalReproduction;
     this.weather.moisture = level.climate.moisture;
     this.weather.cloud = level.climate.cloud;
+    if (varyLandscape && this.weather.land) {
+      const phase = [this.random(), this.random(), this.random()].map(n => n * Math.PI * 2);
+      for (const [i, cell] of this.weather.land.entries()) {
+        const x = i % LAND_SIDE, z = Math.floor(i / LAND_SIDE);
+        const ridge = Math.sin(0.37 * x + phase[0]) * Math.cos(0.42 * z + phase[1]);
+        cell.elevation = 1.8 * ridge + 0.7 * Math.sin(0.58 * (x + z) + phase[2]);
+        cell.moisture = clamp(cell.moisture - ridge * 0.16, 0, 1);
+      }
+    }
     for (let i = 0; i < level.initial.plantAttempts; i++) this.addPlant();
     for (const [species, count] of level.initial.animals)
       for (let i = 0; i < count; i++)
