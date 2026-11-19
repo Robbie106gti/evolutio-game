@@ -1,3 +1,4 @@
+import { ingest, mealYield } from "./food-energy.ts";
 import type { World } from "./sim.ts";
 import type { Animal, Plant } from "./model.ts";
 import {
@@ -31,6 +32,7 @@ import { updateExpression } from "./expression.ts";
 import { feedYoung } from "./nursery.ts";
 import {
   consumeRemains,
+  eatWorms,
   DETRITUS_BITE_RATE,
   DETRITUS_NUTRITION,
   type EdibleRemains,
@@ -245,7 +247,7 @@ export function stepApproximateAnimals(
             soil,
             true,
           );
-          a.energy += bite * DETRITUS_NUTRITION;
+          ingest(w.foodTotals, a, "kind" in remains ? "dead plants" : "carrion", bite * DETRITUS_NUTRITION);
           a.hydration = Math.min(100, a.hydration + bite * 2);
           ate = bite > 0;
           a.state = "Eating remains";
@@ -281,7 +283,7 @@ export function stepApproximateAnimals(
             dt * (5 + g.aggression * 12) * g.size,
           );
           prey.energy -= bite;
-          a.energy += bite * preyEfficiency(a);
+          ingest(w.foodTotals, a, prey.species, bite / 140 * mealYield(prey) * preyEfficiency(a));
           if (prey.species === "bug" && bite > 0) a.hasEatenBug = true;
           if (prey.energy <= 0) {
             prey.deathCause = "predation";
@@ -299,11 +301,10 @@ export function stepApproximateAnimals(
             (dt * (a.species === "bug" ? 18 : 9)) / (1 + p.defense * 4),
           );
           p.energy -= bite;
-          a.energy +=
-            bite *
+          ingest(w.foodTotals, a, p.kind, bite *
             PLANTS[p.kind].nutrition *
             plantEfficiency(a) *
-            (a.species === "bug" ? 0.55 : 1);
+            (a.species === "bug" ? 0.55 : 1));
           a.hydration = Math.min(100, a.hydration + bite * 0.3);
           if (a.species === "bug")
             soil.litter = clamp(soil.litter + bite * 0.008, 0, 1);
@@ -311,10 +312,19 @@ export function stepApproximateAnimals(
           a.state = "Eating";
         }
       }
+      if (!ate && a.species === "mouse" && g.dietAffinity >= 0.3 && water < 0.1) {
+        const bite = eatWorms(soil, dt);
+        if (bite > 0) {
+          ingest(w.foodTotals, a, "worms", bite * 110);
+          a.hydration = Math.min(100, a.hydration + bite * 12);
+          a.state = "Foraging worms";
+          ate = true;
+        }
+      }
       if (!ate && eatsPlants(a) && soil.fungus > 0.025 && water < 0.15) {
         const bite = Math.min(soil.fungus, dt * FUNGI.mushroom.biteRate);
         soil.fungus -= bite;
-        a.energy += bite * FUNGI.mushroom.nutrition;
+        ingest(w.foodTotals, a, "mushrooms", bite * FUNGI.mushroom.nutrition);
         a.hydration = Math.min(
           100,
           a.hydration + bite * FUNGI.mushroom.hydration,

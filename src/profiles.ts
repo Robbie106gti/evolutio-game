@@ -8,7 +8,7 @@ export function freezeProfile<T>(value: T): Readonly<T> {
   return value;
 }
 export type AnimalFamily =
-  "mammal" | "reptile" | "fish" | "bird" | "insect" | "amphibian";
+  "mammal" | "reptile" | "fish" | "bird" | "insect" | "amphibian" | "arachnid" | "crustacean";
 export interface AnimalCapabilities {
   aquatic: boolean;
   flies: boolean;
@@ -52,6 +52,8 @@ export const ANIMAL_FAMILIES = freezeProfile({
     nursery: "none",
     waterEggs: false,
   },
+  arachnid: { aquatic: false, flies: false, reproduction: "eggs", nursery: "none", waterEggs: false },
+  crustacean: { aquatic: true, flies: false, reproduction: "eggs", nursery: "none", waterEggs: true },
   amphibian: {
     aquatic: true,
     flies: false,

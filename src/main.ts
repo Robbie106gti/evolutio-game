@@ -697,7 +697,10 @@ function updateUI() {
     .map((species) => {
       const group = world.animals.filter((a) => a.species === species),
         profile = SPECIES[species];
-      return `<button class="species-card" data-species="${species}" ${group.length ? "" : "disabled"}><b>${profile.label} <span>${group.length}</span></b><small>${species === "bird" ? `${group.filter((a) => a.birdDiet === "raptor").length} birds of prey · ${group.filter((a) => a.birdDiet === "insectivore").length} insect eaters · powered flight` : `${profile.diet} · ${profile.gait}`}</small></button>`;
+      const foods = Object.entries(world.foodTotals[species] ?? {}).sort((a, b) => b[1] - a[1]);
+      const total = foods.reduce((sum, [, energy]) => sum + energy, 0);
+      const intake = foods.map(([food, energy]) => `${food} ${Math.round(energy / total * 100)}%`).join(" · ");
+      return `<button class="species-card" data-species="${species}" ${group.length ? "" : "disabled"}><b>${profile.label} <span>${group.length}</span></b><small>${species === "bird" ? `${group.filter((a) => a.birdDiet === "raptor").length} birds of prey · ${group.filter((a) => a.birdDiet === "insectivore").length} insect eaters · powered flight` : `${profile.diet} · ${profile.gait}`}</small>${intake ? `<small>Energy eaten since tracking began · ${intake}</small>` : ""}</button>`;
     })
     .join("");
   ($("introduce") as HTMLButtonElement).disabled =

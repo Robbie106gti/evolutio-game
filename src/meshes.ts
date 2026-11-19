@@ -590,6 +590,25 @@ export class OrganismMeshes {
       const round = this.animal.round,
         limb = this.animal.limb,
         angular = this.animal.angular;
+      if (a.species === "spider" || a.species === "scorpion" || a.species === "crab") {
+        const crab = a.species === "crab", scorpion = a.species === "scorpion";
+        const tucked = a.state === "Sleeping" ? 0.68 : 1;
+        part(round, -0.13, 0.27 * tucked, 0, crab ? 0.43 : 0.49, 0.23, crab ? 0.58 : 0.31, coat);
+        part(round, 0.32 * tucked, 0.27 * tucked, 0, 0.25, 0.19, 0.25, dark);
+        for (const side of [-1, 1]) {
+          for (let leg = 0; leg < 4; leg++) {
+            const stride = pose.moving ? Math.sin(phase + leg * 2 + side) * 0.14 : 0;
+            part(limb, leg * 0.18 - 0.34 + stride, 0.18, side * 0.42 * tucked,
+              0.06, 0.06, 0.38 * tucked, dark, side * 0.34, side * (leg - 1.5) * 0.24);
+          }
+          if (crab || scorpion) part(round, 0.53, 0.3, side * 0.39, 0.26, 0.14, 0.14, light);
+          part(this.eyes, 0.32 * tucked + 0.17, 0.27 * tucked + 0.11, side * 0.13, 0.05, 0.05, 0.05, dark);
+        }
+        if (scorpion) for (let j = 0; j < 5; j++)
+          part(round, -0.48 - 0.25 * Math.sin(j * 0.7), 0.32 + j * 0.13, 0,
+            0.15, 0.13, 0.11, j === 4 ? dark : coat);
+        continue;
+      }
       if (a.state === "Sleeping" && hasAquaticModel(a)) {
         aquaticModel(a, part, this.animal, this.eyes, coat, light, dark);
         continue;

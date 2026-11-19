@@ -3,6 +3,7 @@ import { PLANTS } from "./species.ts";
 const still = new Set([
   "Eating",
   "Resting",
+  "Waiting in ambush",
   "Sleeping",
   "In nest",
   "In den",

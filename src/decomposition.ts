@@ -39,6 +39,17 @@ export function consumeRemains(
 }
 export function recycleLitter(cell: LandCell, dt: number) {
   const damp = cell.moisture > 0.25;
+  // Worm recruitment spends the same litter that fungi and worms decompose.
+  const recruitment = damp
+    ? Math.min(
+        cell.litter * 0.35,
+        dt * 0.003 * cell.litter * cell.worms * (1 - cell.worms),
+      )
+    : 0;
+  cell.litter -= recruitment / 0.35;
+  cell.worms = clamp(
+    cell.worms + recruitment - dt * cell.worms * (damp ? 0.0003 : 0.004),
+  );
   const processed = Math.min(
     cell.litter,
     dt *
@@ -52,4 +63,15 @@ export function feedPlantSoil(cell: LandCell, dt: number, tree: boolean) {
   const nutrients = cell.nutrients ?? 0.5;
   cell.nutrients = Math.max(0, nutrients - dt * (tree ? 0.00004 : 0.00002));
   return 0.08 + nutrients * 1.84;
+}
+
+// A buried fraction is unavailable to foragers and can repopulate a fed patch.
+export function availableWorms(cell: LandCell) {
+  return Math.max(0, cell.worms - 0.04);
+}
+export function eatWorms(cell: LandCell, dt: number) {
+  const available = availableWorms(cell);
+  const bite = Math.min(available, dt * 0.025 * Math.min(1, available * 5));
+  cell.worms -= bite;
+  return bite;
 }

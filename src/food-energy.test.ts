@@ -1,0 +1,20 @@
+import { World } from "./sim.ts";
+import { ingest, mealYield } from "./food-energy.ts";
+import { maturityAge } from "./biology.ts";
+import { decodeSave, encodeSave } from "./save.ts";
+
+const world = new World(91);
+const mouse = world.animals.find(a => a.species === "mouse")!;
+const cat = world.animals.find(a => a.species === "cat")!;
+mouse.age = 0;
+const newborn = mealYield(mouse);
+mouse.age = maturityAge(mouse);
+const adult = mealYield(mouse);
+mouse.genes.size *= 1.05;
+if (!(newborn < adult && adult < mealYield(mouse))) throw Error("Meal yield must follow grown body size");
+cat.energy = 137;
+ingest(world.foodTotals, cat, "mouse", adult);
+if (world.foodTotals.cat?.mouse !== 3 || cat.energy !== 140) throw Error("Count only ingested energy");
+const raw = encodeSave({world, rate: 1, paused: true, selected: 0});
+if (decodeSave(raw).world.foodTotals.cat?.mouse !== 3) throw Error("Meal history lost");
+console.log("Prey age, inherited size, intake capacity and saved diet totals passed");

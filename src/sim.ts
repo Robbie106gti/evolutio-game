@@ -1,3 +1,5 @@
+import { ingest, mealYield, type FoodTotals } from "./food-energy.ts";
+import { pondFoodQuery } from "./pond-food.ts";
 import { disperseSeed, storeDormantSeed } from "./seed-dispersal.ts";
 import {
   createEvolutionArchive,
@@ -19,6 +21,8 @@ import {
 } from "./plant-recovery.ts";
 import {
   consumeRemains,
+  availableWorms,
+  eatWorms,
   DETRITUS_NUTRITION,
   DETRITUS_BITE_RATE,
   remainsMass,
@@ -96,7 +100,7 @@ import type {
 } from "./model.ts";
 import { SPECIES, PLANTS, PLANT_PROFILES } from "./species.ts";
 import {
-  canHunt,
+  canHuntAt,
   huntsAnimals,
   burstProfile,
   clamp,
@@ -147,6 +151,7 @@ export class World {
     raining: false,
     land: initialLandscape(),
   };
+  foodTotals: FoodTotals = {};
   plantDeaths = {
     depletion: 0,
     drought: 0,
@@ -348,7 +353,8 @@ export class World {
           cat: 0.5,
           fox: 0.52,
           wolf: 0.55,
-          bug: 0.72,
+          spider: 0.55, scorpion: 0.18, crab: 0.85,
+    bug: 0.72,
           bird: 0.65,
           snake: 0.38,
           fish: 0.8,
@@ -696,6 +702,7 @@ export class World {
       this.carcasses = this.carcasses.filter((c) => c.decay < 1);
     }
     const depthAt = createWaterQuery(this.ponds, this.weather.land);
+    const foodAt = pondFoodQuery(this.ponds, depthAt, this.weather.land);
     if (
       Math.floor(this.time / 2) > Math.floor((this.time - dt) / 2) &&
       this.seedBank.length
@@ -1074,6 +1081,7 @@ export class World {
         const invalidTarget =
           !!target &&
           (target.energy <= ("genes" in target ? 0 : 2) ||
+            ("genes" in target && (a.species === "spider" || a.species === "crocodile" || target.species === "crocodile") && !canHuntAt(a, target, depthAt)) ||
             (!("genes" in target) && target.health <= 0));
         const urgentFood =
           hungry &&
@@ -1098,7 +1106,7 @@ export class World {
                 2,
                 (b) =>
                   b.energy > 0 &&
-                  canHunt(a, b) &&
+                  canHuntAt(a, b, depthAt) &&
                   Math.hypot(b.x - a.x, b.z - a.z) < 2,
               )));
         const urgentThreat = predatorGrid.findNear(
@@ -1107,7 +1115,7 @@ export class World {
           2,
           (b) =>
             b.energy > 0 &&
-            canHunt(b, a) &&
+            canHuntAt(b, a, depthAt) &&
             Math.hypot(b.x - a.x, b.z - a.z) < 2 &&
             (!burstProfile(b.species) ||
               (b.energy < 80 &&
@@ -1155,7 +1163,7 @@ export class World {
                 if (p.energy > 2 && p.health > 0) considerTarget(p);
             if (huntsAnimals(a))
               for (const b of animalGrid.near(a.x, a.z, g.sense))
-                if (b.energy > 0 && canHunt(a, b)) considerTarget(b);
+                if (b.energy > 0 && canHuntAt(a, b, depthAt)) considerTarget(b);
           }
 
           threat = predatorGrid.findNear(
@@ -1163,7 +1171,7 @@ export class World {
             a.z,
             g.sense,
             (b) =>
-              canHunt(b, a) &&
+              canHuntAt(b, a, depthAt) &&
               (!burstProfile(b.species) ||
                 (b.mealEnergy <= 0 &&
                   b.energy < 80 &&
@@ -1399,7 +1407,7 @@ export class World {
           needState = sunny ? "Seeking sunshine" : "Basking";
           stationary = !sunny;
         }
-        if (a.species === "bug" && hungry && !a.nursery && !threat && !need) {
+        if ((a.species === "bug" || a.species === "crab") && hungry && !a.nursery && !threat && !need) {
           const food = remainsGrid.findNear(
             a.x,
             a.z,
@@ -1407,7 +1415,7 @@ export class World {
             (r) =>
               r.decay < 1 &&
               Math.hypot(a.x - r.x, a.z - r.z) <= Math.min(g.sense, 10) &&
-              depthAt(r.x, r.z) < 0.15,
+              (a.species === "crab" || depthAt(r.x, r.z) < 0.15),
           );
           if (food) {
             need = food;
@@ -1422,7 +1430,7 @@ export class World {
                 cell,
                 true,
               );
-              a.energy = Math.min(150, a.energy + bite * DETRITUS_NUTRITION);
+              ingest(this.foodTotals, a, "kind" in food ? "dead plants" : "carrion", bite * DETRITUS_NUTRITION);
               a.hydration = Math.min(100, a.hydration + bite * 2);
             }
           }
@@ -1444,10 +1452,7 @@ export class World {
             if (a.altitude < 0.5) {
               const bite = Math.min(cell.fungus, dt * FUNGI.mushroom.biteRate);
               cell.fungus -= bite;
-              a.energy = Math.min(
-                150,
-                a.energy + bite * FUNGI.mushroom.nutrition,
-              );
+              ingest(this.foodTotals, a, "mushrooms", bite * FUNGI.mushroom.nutrition);
               a.hydration = Math.min(
                 100,
                 a.hydration + bite * FUNGI.mushroom.hydration,
@@ -1473,6 +1478,7 @@ export class World {
         }
         if (
           (a.species === "frog" ||
+            (a.species === "mouse" && g.dietAffinity >= 0.3 && !target) ||
             (a.species === "bird" && a.birdDiet === "insectivore")) &&
           a.energy < 110 &&
           !a.nursery &&
@@ -1481,22 +1487,22 @@ export class World {
           !need
         ) {
           const cell = this.weather.land?.[landIndex(a.x, a.z)];
-          if (cell && cell.worms > 0.04 && depthAt(a.x, a.z) < 0.1) {
+          if (cell && availableWorms(cell) > 0.002 && depthAt(a.x, a.z) < 0.1) {
             need = { x: a.x, z: a.z };
             needState = "Foraging worms";
             stationary = true;
             if (a.altitude < 0.5) {
-              const bite = Math.min(cell.worms, dt * 0.025);
-              cell.worms -= bite;
-              a.energy += bite * 110;
+              const bite = eatWorms(cell, dt);
+              ingest(this.foodTotals, a, "worms", bite * 110);
               a.hydration = Math.min(100, a.hydration + bite * 12);
             }
           } else if (!target) {
-            let best = 0.06;
+            let best = 0.02;
             for (let j = 0; j < 8; j++) {
               const x = a.x + Math.cos((j * Math.PI) / 4) * 6,
                 z = a.z + Math.sin((j * Math.PI) / 4) * 6;
-              const food = landAt(this.weather.land, x, z).worms;
+              const patch = this.weather.land?.[landIndex(x, z)];
+              const food = patch ? availableWorms(patch) : 0;
               if (
                 Math.hypot(x, z) < WORLD_RADIUS - 1 &&
                 food > best &&
@@ -1554,16 +1560,15 @@ export class World {
           );
           const wet = depthAt(a.x, a.z) > a.altitude + 0.1;
           if (wet) a.hydration = Math.min(100, a.hydration + dt * 8);
-          if (
+          const feedingPond =
             (a.species === "fish" || a.species === "turtle") &&
             wet &&
             a.energy < 110 &&
-            !restDue &&
-            pond.food > 0.01
-          ) {
-            const bite = Math.min(pond.food, dt * 0.002);
-            pond.food -= bite;
-            a.energy += bite * 300;
+            !restDue ? foodAt(a.x, a.z) : undefined;
+          if (feedingPond) {
+            const bite = Math.min(feedingPond.food, dt * 0.002);
+            feedingPond.food -= bite;
+            ingest(this.foodTotals, a, "pond food", bite * 300);
             need = { x: a.x, z: a.z };
             needState = "Aquatic feeding";
             stationary = true;
@@ -1605,7 +1610,7 @@ export class World {
             );
           if (
             baby &&
-            animalGrid.near(baby.x, baby.z, 3).some((p) => canHunt(p, baby))
+            animalGrid.near(baby.x, baby.z, 3).some((p) => canHuntAt(p, baby, depthAt))
           ) {
             need = baby;
             needState = "Guarding young";
@@ -1953,7 +1958,7 @@ export class World {
               if (atCatch) {
                 const bite = Math.min(a.mealEnergy, dt * 3);
                 a.mealEnergy -= bite;
-                a.energy += bite;
+                ingest(this.foodTotals, a, a.mealSpecies ?? "older catch", bite);
                 a.hydration = Math.min(100, a.hydration + bite * 0.2);
                 if (a.mealEnergy <= 0) a.restTimer = 15;
               }
@@ -1973,6 +1978,16 @@ export class World {
                 );
                 if (a.stamina <= 30) a.restTimer = 10;
               } else huntingState = "Stalking";
+            } else if (a.species === "crocodile") {
+              if (depthAt(a.x, a.z) > 0.1) {
+                stationary = true;
+                huntingState = "Waiting in ambush";
+              } else {
+                need = this.ponds.reduce((nearest, pond) =>
+                  Math.hypot(pond.x - a.x, pond.z - a.z) < Math.hypot(nearest.x - a.x, nearest.z - a.z)
+                    ? pond : nearest, { x: riverX(a.z), z: a.z });
+                needState = "Seeking water";
+              }
             } else huntingState = "Searching for prey";
           }
           if (burst === 1)
@@ -2271,11 +2286,10 @@ export class World {
               (dt * (a.species === "bug" ? 18 : 9)) / (1 + p.defense * 4),
             );
             p.energy = Math.max(0, p.energy - bite);
-            a.energy +=
-              bite *
+            ingest(this.foodTotals, a, p.kind, bite *
               PLANTS[p.kind].nutrition *
               plantEfficiency(a) *
-              (a.species === "bug" ? 0.55 : 1);
+              (a.species === "bug" ? 0.55 : 1));
             if (a.species === "bug") {
               const soil = this.weather.land![landIndex(p.x, p.z)];
               soil.litter = clamp(soil.litter + bite * 0.008, 0, 1);
@@ -2308,14 +2322,15 @@ export class World {
               prey.deathCause = "predation";
               prey.killedBy = a.id;
               if (hunter) {
-                a.mealEnergy = 55 + prey.genes.size * 35;
+                a.mealEnergy = mealYield(prey);
+                a.mealSpecies = prey.species;
                 a.mealX = prey.x;
                 a.mealZ = prey.z;
                 a.mealTime = 90;
                 a.restTimer = 0;
               }
             }
-            if (!hunter) a.energy += actualBite * preyEfficiency(a);
+            if (!hunter) ingest(this.foodTotals, a, prey.species, actualBite / 140 * mealYield(prey) * preyEfficiency(a));
             a.state = hunter
               ? a.mealEnergy > 0
                 ? "Returning to catch"

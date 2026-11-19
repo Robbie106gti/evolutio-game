@@ -7,6 +7,12 @@ export const huntsAnimals = (a: Animal) =>
 
 export const canHunt = (predator: Animal, prey: Animal) => {
   if (prey.altitude > 0.6 && predator.species !== "bird") return false;
+  if (predator.species === "spider" && (prey.species === "mouse" || prey.species === "bird"))
+    return grownBodySize(prey) <= grownBodySize(predator) * 0.85;
+  if (prey.species === "crocodile")
+    return lifeStage(prey) === "Baby" &&
+      (predator.species === "cat" || predator.species === "fox" ||
+        (predator.species === "bird" && predator.birdDiet === "raptor"));
   if (predator.species === "mouse") {
     if (
       predator.id === prey.id ||
@@ -26,9 +32,19 @@ export const canHunt = (predator: Animal, prey: Animal) => {
   if (predator.species === "bird")
     return predator.birdDiet === "raptor"
       ? prey.species === "mouse" || prey.species === "fish"
-      : prey.species === "bug";
+      : prey.species === "bug" || prey.species === "spider";
   return SPECIES[predator.species].prey.includes(prey.species);
 };
+
+export function canHuntAt(predator: Animal, prey: Animal, depthAt: (x: number, z: number) => number) {
+  if (!canHunt(predator, prey)) return false;
+  if (prey.species === "crocodile")
+    return depthAt(prey.x, prey.z) <= (predator.species === "bird" ? 0.4 : 0.2);
+  if (predator.species !== "crocodile") return true;
+  const reach = Math.hypot(prey.x - predator.x, prey.z - predator.z);
+  return reach <= 2.5 && depthAt(predator.x, predator.z) > 0.1 &&
+    (depthAt(prey.x, prey.z) > 0.05 || reach <= 1.1);
+}
 
 export const burstProfile = (species: Species) =>
   species in BURST_HUNTERS
@@ -74,6 +90,9 @@ export const ageVulnerability = (a: Animal) =>
 
 export const growthScale = (a: Animal) =>
   0.4 + 0.6 * clamp(a.age / maturityAge(a), 0, 1);
+
+export const grownBodySize = (a: Animal) =>
+  SPECIES[a.species].size * a.genes.size * growthScale(a);
 
 export function bodyNeeds(a: Animal, temperature: number) {
   return {

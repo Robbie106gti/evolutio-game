@@ -5,6 +5,7 @@ import {
   APPEARANCE_DEFAULTS,
   type Species,
 } from "./sim.ts";
+import { canHuntAt, maturityAge } from "./biology.ts";
 import { encodeSave, decodeSave } from "./save.ts";
 import * as THREE from "three";
 import { OrganismMeshes } from "./meshes.ts";
@@ -34,6 +35,32 @@ assert(
     !canHunt(animal("snake"), animal("cat")),
   "Species do not attack arbitrary neighbours",
 );
+const spider = { ...animal("spider"), age: 100 };
+spider.genes = { ...spider.genes, size: 1 };
+for (const species of ["mouse", "bird"] as const) {
+  const prey = { ...animal(species), age: 0, altitude: 0 };
+  prey.genes = { ...prey.genes, size: 1 };
+  assert(canHunt(spider, prey), "Grown spider can take small grounded prey");
+  assert(!canHunt({ ...spider, age: 0 }, prey), "Spiderlings cannot tackle the same prey");
+  assert(!canHunt(spider, { ...prey, age: maturityAge(prey) }), "Prey outgrows the spider");
+  if (species === "bird")
+    assert(!canHunt(spider, { ...prey, altitude: 1 }), "Airborne bird escapes spider");
+}
+const croc = { ...animal("crocodile"), x: 0, z: 0 };
+const bankBird = { ...animal("bird"), x: 1, z: 0, altitude: 0 };
+const bankDepth = (x: number) => x < 0.5 ? 1 : 0;
+assert(canHuntAt(croc, bankBird, bankDepth), "Crocodile can strike a bird at the bank");
+assert(!canHuntAt(croc, { ...bankBird, altitude: 1 }, bankDepth), "Flying bird is safe");
+assert(!canHuntAt(croc, { ...bankBird, x: 2 }, bankDepth), "No pursuit inland");
+assert(!canHuntAt(croc, { ...bankBird, species: "mouse" }, bankDepth), "Mice are outside the crocodile diet");
+assert(!canHuntAt(croc, bankBird, () => 0), "Crocodile needs water to ambush");
+const hatchling = { ...croc, age: 0 };
+for (const predator of [animal("cat"), animal("fox"), { ...bankBird, birdDiet: "raptor" as const }]) {
+  assert(canHuntAt(predator, hatchling, () => 0), "Exposed hatchlings are prey");
+  assert(!canHuntAt(predator, hatchling, () => 1), "Deep water shelters hatchlings");
+  assert(!canHuntAt(predator, { ...hatchling, age: maturityAge(croc) / 3 }, () => 0), "Juveniles outgrow hatchling predators");
+}
+assert(!canHuntAt({ ...bankBird, birdDiet: "insectivore" }, hatchling, () => 0), "Insect eaters leave hatchlings alone");
 for (const s of Object.keys(SPECIES) as Species[]) {
   const parent = animal(s);
   const before = JSON.stringify(parent.genes);

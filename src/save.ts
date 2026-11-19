@@ -51,7 +51,7 @@ export function encodeSave(session: Session): string {
   )
     throw new Error("World and level progress do not match");
   return JSON.stringify({
-    version: 35,
+    version: 36,
     savedAt: new Date().toISOString(),
     ...session,
     level: progress,
@@ -71,7 +71,7 @@ export function decodeSave(raw: string): Session {
   if (
     ![
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-      22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+      22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
     ].includes(data?.version) ||
     !w ||
     (data.version >= 35 && typeof w.naturalReproduction !== "boolean") ||
@@ -434,6 +434,7 @@ export function decodeSave(raw: string): Session {
       ![-1, 0, 1].includes(a.crossingSide) ||
       !number(a.stamina, 0, 100) ||
       !number(a.restTimer, 0, 100) ||
+      (a.mealSpecies !== undefined && !Object.hasOwn(SPECIES, a.mealSpecies)) ||
       !number(a.mealEnergy, 0, 140) ||
       !number(a.mealTime, 0, 100) ||
       !number(a.mealX, -WORLD_RADIUS - 2, WORLD_RADIUS + 2) ||
@@ -711,6 +712,15 @@ export function decodeSave(raw: string): Session {
     "history",
   ] as const)
     (world as unknown as Record<string, unknown>)[key] = w[key];
+  if (w.foodTotals !== undefined) {
+    if (!w.foodTotals || typeof w.foodTotals !== "object" || Array.isArray(w.foodTotals)) fail();
+    const foods = new Set([...Object.keys(SPECIES), ...Object.keys(PLANTS), "worms", "mushrooms", "pond food", "dead plants", "carrion", "older catch"]);
+    for (const [species, diet] of Object.entries(w.foodTotals)) {
+      if (!Object.hasOwn(SPECIES, species) || !diet || typeof diet !== "object" || Array.isArray(diet) ||
+          !Object.entries(diet).every(([food, value]) => foods.has(food) && number(value))) fail();
+    }
+    world.foodTotals = w.foodTotals;
+  }
   if (w.evolution !== undefined)
     world.evolution = readEvolutionArchive(w.evolution);
   else {

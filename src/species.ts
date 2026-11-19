@@ -21,7 +21,7 @@ export const SPECIES = freezeProfile({
     speed: 1.15,
     size: 1,
     hue: 0.065,
-    diet: "Mice, birds and frogs",
+    diet: "Mice, birds, frogs and crocodile hatchlings",
     gait: "Stalk / dash",
     clutchSize: 1,
     incubation: 0,
@@ -70,11 +70,11 @@ export const SPECIES = freezeProfile({
     label: "Crocodile",
     kind: "hunter",
     plants: false,
-    prey: ["fish", "frog", "mouse", "bird"] as Species[],
+    prey: ["fish", "frog", "bird"] as Species[],
     speed: 1,
     size: 1.5,
     hue: 0.18,
-    diet: "Fish, frogs and small animals",
+    diet: "Fish, frogs and water-edge birds",
     gait: "Swim / crawl",
     clutchSize: 4,
     incubation: 65,
@@ -114,10 +114,25 @@ export const SPECIES = freezeProfile({
     speed: 1.2,
     size: 1.1,
     hue: 0.07,
-    diet: "Mice and birds",
+    diet: "Mice, birds and crocodile hatchlings",
     gait: "Prowl",
     clutchSize: 1,
     incubation: 0,
+  }),
+  spider: defineAnimal("arachnid", {
+    label: "Spider", kind: "hunter", plants: false, prey: ["bug", "mouse", "bird"], speed: 0.85,
+    size: 0.45, hue: 0.07, diet: "Bugs, small mice and small grounded birds", gait: "Eight-legged stalk",
+    clutchSize: 8, incubation: 24,
+  }),
+  scorpion: defineAnimal("arachnid", {
+    label: "Scorpion", kind: "hunter", plants: false, prey: ["bug", "spider"], speed: 0.65,
+    size: 0.58, hue: 0.11, diet: "Bugs and spiders", gait: "Night prowl",
+    clutchSize: 3, incubation: 0, capabilities: { reproduction: "live" },
+  }),
+  crab: defineAnimal("crustacean", {
+    label: "Crab", kind: "hunter", plants: false, prey: ["bug"], speed: 0.65,
+    size: 0.72, hue: 0.035, diet: "Remains and insects", gait: "Shore scavenger",
+    clutchSize: 6, incubation: 30,
   }),
   bug: defineAnimal("insect", {
     label: "Bug",
@@ -211,6 +226,7 @@ export const ADAPTATION_DEFAULTS = {
 };
 
 export const BURST_HUNTERS = {
+  crocodile: { boost: 2.6, drain: 26, recovery: 4 },
   cat: { boost: 2.5, drain: 22, recovery: 7 },
   fox: { boost: 2.25, drain: 18, recovery: 6 },
   wolf: { boost: 1.95, drain: 14, recovery: 5 },
@@ -234,12 +250,13 @@ export const LIFE_HISTORY: Record<
   cat: { maturity: 35, lifespan: 900 },
   fox: { maturity: 30, lifespan: 800 },
   wolf: { maturity: 45, lifespan: 1100 },
+  spider: { maturity: 14, lifespan: 230 }, scorpion: { maturity: 45, lifespan: 640 }, crab: { maturity: 30, lifespan: 480 },
   bug: { maturity: 6, lifespan: 160 },
   bird: { maturity: 20, lifespan: 650 },
   snake: { maturity: 40, lifespan: 1100 },
   fish: { maturity: 12, lifespan: 420 },
   turtle: { maturity: 70, lifespan: 1600 },
-  crocodile: { maturity: 90, lifespan: 1800 },
+  crocodile: { maturity: 240, lifespan: 1800 },
   frog: { maturity: 15, lifespan: 480 },
 };
 

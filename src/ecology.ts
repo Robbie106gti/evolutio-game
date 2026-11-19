@@ -212,6 +212,7 @@ export function camouflage(a: Animal, terrain: ReturnType<typeof habitat>) {
     cat: 0.07,
     fox: 0.065,
     wolf: 0.12,
+    spider: 0.18, scorpion: 0.12, crab: 0.08,
     bug: 0.29,
     bird: a.birdDiet === "raptor" ? 0.08 : 0.57,
     snake: 0.22,
@@ -353,13 +354,6 @@ export function stepLandscape(
     const soil = { ...c, moisture, fungus };
     recycleLitter(soil, dt);
     const litter = soil.litter;
-    const worms = clamp(
-      c.worms +
-        dt *
-          (moisture > 0.25
-            ? 0.004 * litter * (1 - c.worms) - 0.0003 * c.worms
-            : -0.004 * c.worms),
-    );
     return {
       ...c,
       moisture,
@@ -367,7 +361,7 @@ export function stepLandscape(
       grass,
       fungus,
       litter,
-      worms,
+      worms: soil.worms,
       nutrients: soil.nutrients,
     };
   });

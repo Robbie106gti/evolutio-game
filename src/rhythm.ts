@@ -11,6 +11,7 @@ export function rhythmDefaults(species: Species): RhythmGenes {
     cat: [0.75, 0.85, 0.55],
     fox: [0.75, 0.45, 0.55],
     wolf: [0.75, 0.65, 0.6],
+    spider: [0.75, 0.2, 0.5], scorpion: [0.75, 0.1, 0.45], crab: [0.75, 0.4, 0.55],
     bug: [0.25, 0.2, 0.65],
     bird: [0.25, 0.1, 0.55],
     snake: [0.25, 0.1, 0.5],

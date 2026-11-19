@@ -20,6 +20,9 @@ export type Species =
   | "cat"
   | "fox"
   | "wolf"
+  | "spider"
+  | "scorpion"
+  | "crab"
   | "bug"
   | "bird"
   | "snake"
@@ -110,6 +113,7 @@ export interface Animal {
   crossingSide: number;
   stamina: number;
   restTimer: number;
+  mealSpecies?: Species;
   mealEnergy: number;
   mealX: number;
   mealZ: number;

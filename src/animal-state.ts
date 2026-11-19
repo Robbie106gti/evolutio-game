@@ -37,6 +37,7 @@ export const ANIMAL_STATES = [
   "Returning to catch",
   "Recovering",
   "Stalking",
+  "Waiting in ambush",
   "Sprinting",
   "Searching for prey",
   "Seeking crossing",

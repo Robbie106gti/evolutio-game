@@ -1,3 +1,4 @@
+import { maturityAge } from "./biology.ts";
 import { FIRST_GROVE } from "./levels.ts";
 import type { Animal, Species } from "./model.ts";
 import {
@@ -183,8 +184,8 @@ check(
 for (const species of Object.keys(SPECIES) as Species[]) {
   const w = island();
   const a = adult(w, species, "female");
-  a.age = 100;
   a.genes.maturation = 1;
+  a.age = maturityAge(a) + 1;
   a.genes.longevity = 1;
   stepReproduction(w, () => 1);
   assert.equal(
@@ -193,8 +194,8 @@ for (const species of Object.keys(SPECIES) as Species[]) {
     species + " must not reproduce alone immediately",
   );
   const b = adult(w, species, "male", 5);
-  b.age = 100;
   b.genes.maturation = 1;
+  b.age = maturityAge(b) + 1;
   b.genes.longevity = 1;
   stepReproduction(w, () => 1);
   assert.equal(a.reproductive?.mate, b.id, species + " pairs");
