@@ -19,5 +19,8 @@ export function plantAppearance(p: Plant) {
 }
 // A foot travels back along the ground during stance and lifts on its return.
 export function footPose(phase: number, reach: number, lift: number) {
-  return { x: Math.cos(phase) * reach, y: Math.max(0, Math.sin(phase)) * lift };
+  return {
+    x: -Math.cos(phase) * reach,
+    y: Math.max(0, Math.sin(phase)) * lift,
+  };
 }

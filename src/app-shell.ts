@@ -54,4 +54,5 @@ export const APP_SHELL = `
 <dt>Inspect &amp; edit</dt><dd>Tap an animal, plant, mushroom, nest or den to inspect it. Select Follow animal to track it. Open Shape &amp; nurture for brushes; press Esc to return to Explore.</dd>
 <dt>Control time</dt><dd>Pause or choose 1×, 3× or 8×. Generations advances behind the scenes; Stop &amp; return brings you back. Hide journal gives the island more room.</dd>
 <dt>Keep your progress</dt><dd>Open the journal for Save island and Export backup. Islands autosave in this browser; each island has a separate save. Export backup downloads a copy. Progress stays on this device and does not advance while closed.</dd>
-</dl><p class="help-context">Curious about a creature or plant? Its inspector explains its needs, traits and role in the ecosystem.</p><button id="begin" class="primary">Back to island</button></dialog></main>`;
+</dl><a href="./gallery.html" target="_blank" rel="noopener">Open wildlife gallery ↗</a><p class="help-context">Curious about a creature or plant? Its inspector explains its needs, traits and role in the ecosystem.</p><button id="begin" class="primary">Back to island</button></dialog></main>`;
+

@@ -88,18 +88,29 @@ export function animalPose(a: Animal) {
 }
 export function plantLifeVisuals(p: Plant) {
   const maturity = Math.min(1, Math.max(0, p.age) / PLANTS[p.kind].maturity);
-  const size = 0.22 + 0.78 * Math.sqrt(maturity);
+  const herb = p.kind === "grass";
+  const size = herb
+    ? 0.18 + 0.82 * maturity
+    : 0.22 + 0.78 * Math.sqrt(maturity);
   const damage = 1 - Math.max(0, Math.min(1, p.health / 100));
+  const lifespanFraction = p.age * (0.6 + p.growth * 0.3) / PLANTS[p.kind].lifespan;
+  const aging = Math.max(0, Math.min(1, (lifespanFraction - 0.68) / 0.32));
+  const woodyCanopy = !herb && !(p.kind === "bush" && p.variety === 2);
   const drought = p.expression.droughtTolerance * (0.2 + damage * 0.8);
   const flooding = p.expression.floodTolerance * (0.2 + damage * 0.8);
   return {
     size,
+    newGrowth: herb ? 1 - maturity : 0,
+    lifespanFraction,
+    aging,
+    damage,
+    wilt: herb ? Math.max(damage, aging * 0.62) : 0,
     drought,
     flooding,
     foliage:
-      0.08 +
+      (woodyCanopy ? 1 - Math.max(aging * 0.38, damage * 0.28) : 1) * (0.08 +
       0.92 *
-        Math.min(1, Math.max(0, p.energy) / (PLANTS[p.kind].capacity * 0.45)),
+        Math.min(1, Math.max(0, p.energy) / (PLANTS[p.kind].capacity * 0.45))),
     droop: p.kind === "tree" ? 1 : 1 - drought * 0.3 - flooding * 0.12,
   };
 }

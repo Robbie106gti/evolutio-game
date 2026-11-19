@@ -30,6 +30,11 @@ check(
     footPose(Math.PI * 0.5, 0.3, 0.2).y > 0.19,
   "Feet lift only on return stroke",
 );
+check(
+  footPose(4, 1, 1).x > footPose(5, 1, 1).x &&
+    footPose(1, 1, 1).x < footPose(2, 1, 1).x,
+  "Feet sweep backward during stance and forward during swing",
+);
 const meshes = new OrganismMeshes(new THREE.Scene());
 const many = Array.from({ length: 560 }, (_, i) => {
   const b = structuredClone(a);

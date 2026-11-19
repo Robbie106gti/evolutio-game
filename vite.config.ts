@@ -6,6 +6,7 @@ export default defineConfig({
   server: { watch: { ignored: ["**/reports/**"] } },
   build: {
     rollupOptions: {
+      input: { island: "index.html", gallery: "gallery.html" },
       output: {
         manualChunks(id) {
           if (id.includes("/node_modules/three/build/three.core.js"))
@@ -16,3 +17,4 @@ export default defineConfig({
     },
   },
 });
+

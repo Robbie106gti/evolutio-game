@@ -1,3 +1,4 @@
+import { aquaticModel, hasAquaticModel } from "./aquatic-models.ts";
 import { mouseAppearance } from "./mouse-appearance.ts";
 import type { Carcass } from "./decomposition.ts";
 import { animalPose, plantLifeVisuals } from "./state-visuals.ts";
@@ -19,7 +20,7 @@ import {
   type PlantKind,
   type PlantRemains,
 } from "./model.ts";
-import { SPECIES } from "./species.ts";
+import { PLANTS, SPECIES } from "./species.ts";
 import { growthScale, lifeStage } from "./biology.ts";
 
 // Shared geometry batches all animal parts into three instanced draw calls.
@@ -48,6 +49,40 @@ function shape(
 const ball = () => new THREE.IcosahedronGeometry(1, 1);
 const cone = () => new THREE.ConeGeometry(1, 1, 5);
 const box = () => new THREE.BoxGeometry(1, 1, 1);
+function fernGeometry() {
+  const parts: Parameters<typeof shape>[0] = [];
+  for (let frond = 0; frond < 7; frond++) {
+    const angle = frond * 2.4;
+    const reach = 0.62 + (frond % 3) * 0.1;
+    const point = (t: number) => new THREE.Vector3(
+      Math.cos(angle) * reach * t,
+      0.06 + Math.sin(t * 2.15) * (0.55 + (frond % 2) * 0.15),
+      Math.sin(angle) * reach * t,
+    );
+    for (let row = 1; row <= 6; row++) {
+      const start = point((row - 1) / 6), end = point(row / 6);
+      const direction = end.clone().sub(start);
+      const rotation = new THREE.Quaternion().setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0), direction.clone().normalize(),
+      );
+      const euler = new THREE.Euler().setFromQuaternion(rotation);
+      parts.push({
+        geo: new THREE.CylinderGeometry(0.012, 0.019, direction.length(), 3),
+        pos: start.lerp(end, 0.5).toArray(), rot: [euler.x, euler.y, euler.z],
+      });
+      const length = 0.09 + 0.14 * Math.sin(Math.PI * row / 6);
+      for (const side of [-1, 1]) {
+        const yaw = angle + side * 0.95;
+        parts.push({
+          geo: new THREE.OctahedronGeometry(),
+          pos: [end.x + length * Math.cos(yaw), end.y, end.z + length * Math.sin(yaw)],
+          rot: [0, -yaw, 0], scale: [length, 0.018, length * 0.3],
+        });
+      }
+    }
+  }
+  return shape(parts);
+}
 function plantGeometry(kind: PlantKind, variety = 0) {
   if (variety === 1 && kind === "tree")
     return shape(
@@ -70,21 +105,18 @@ function plantGeometry(kind: PlantKind, variety = 0) {
       })),
     );
   if (variety === 1 && kind === "grass")
-    return shape(
-      [-2, -1, 0, 1, 2].map((i) => ({
-        geo: ball(),
-        pos: [i * 0.18, 0.25 + (0.4 - Math.abs(i) * 0.1), 0],
-        scale: [0.3, 0.09, 0.45],
-        rot: [0, i * 0.7, i * 0.2],
-      })),
-    );
-  if (variety === 2 && kind === "bush")
+    return fernGeometry();
+  if (variety === 2 && kind === "grass")
     return shape([
-      { geo: ball(), pos: [0, 0.65, 0], scale: [0.22, 0.8, 0.22] },
-      { geo: ball(), pos: [-0.35, 0.65, 0], scale: [0.16, 0.4, 0.16] },
-      { geo: ball(), pos: [0.35, 0.85, 0], scale: [0.15, 0.45, 0.15] },
-      { geo: box(), pos: [0, 0.52, 0], scale: [0.85, 0.18, 0.18] },
+      { geo: new THREE.CylinderGeometry(0.025, 0.04, 0.65, 5), pos: [0, 0.325, 0] },
+      ...[-1, 1].map(side => ({
+        geo: new THREE.OctahedronGeometry(),
+        pos: [side * 0.12, 0.23, 0], scale: [0.08, 0.21, 0.075],
+        rot: [0, 0, -side * 0.72],
+      })),
     ]);
+  if (variety === 2 && kind === "bush")
+    return shape([{ geo: new THREE.CapsuleGeometry(0.23, 1.18, 3, 10), pos: [0, 0.82, 0] }]);
 
   if (kind === "grass")
     return shape(
@@ -110,10 +142,16 @@ function plantGeometry(kind: PlantKind, variety = 0) {
   ]);
 }
 export class OrganismMeshes {
+  private shootColor = new THREE.Color("#a9eb50");
   private windTime = { value: 0 };
   animal: Record<string, THREE.InstancedMesh>;
   plant: Record<PlantKind, THREE.InstancedMesh>;
   plantVariants: Record<PlantKind, THREE.InstancedMesh[]>;
+  private readonly bloomColor = new THREE.Color("#ffe3bd");
+  private cactusArms: THREE.InstancedMesh;
+  private cactusFlower: THREE.InstancedMesh;
+  private weatheredCactus = new THREE.Color("#887e73");
+  petals: THREE.InstancedMesh;
   accents: THREE.InstancedMesh;
   private previousLand: LandCell[] | undefined;
   trunks: THREE.InstancedMesh;
@@ -169,16 +207,36 @@ export class OrganismMeshes {
     ) as Record<PlantKind, THREE.InstancedMesh[]>;
     for (const canopy of Object.values(this.plantVariants).flat()) {
       const material = canopy.material as THREE.MeshStandardMaterial;
+      const herb = this.plantVariants.grass.includes(canopy);
+      if (herb)
+        canopy.geometry.setAttribute(
+          "wilt",
+          new THREE.InstancedBufferAttribute(
+            new Float32Array(canopy.instanceMatrix.count),
+            1,
+          ),
+        );
       material.onBeforeCompile = (shader) => {
         shader.uniforms.vegetationTime = this.windTime;
         shader.vertexShader =
-          "uniform float vegetationTime;\n" + shader.vertexShader;
+          (herb ? "attribute float wilt;\n" : "") +
+          "uniform float vegetationTime;\n" +
+          shader.vertexShader;
         shader.vertexShader = shader.vertexShader.replace(
           "#include <begin_vertex>",
           `
           #include <begin_vertex>
           #ifdef USE_INSTANCING
           float seed = instanceMatrix[3].x * 0.31 + instanceMatrix[3].z * 0.23;
+          ${
+            herb
+              ? `float tip = max(0.0, position.y);
+          float arch = wilt * tip * tip;
+          transformed.x += arch * (0.64 + position.x * 1.3);
+          transformed.z += arch * (0.22 + position.z * 1.4);
+          transformed.y -= arch * (0.9 + position.x * 0.22);`
+              : ""
+          }
           float bend = max(0.0, position.y - 0.65);
           transformed.x += sin(vegetationTime * 1.4 + seed) * bend * 0.018;
           transformed.z += cos(vegetationTime * 1.1 + seed) * bend * 0.012;
@@ -186,8 +244,23 @@ export class OrganismMeshes {
         `,
         );
       };
-      material.customProgramCacheKey = () => "vegetation-sway-v1";
+      material.customProgramCacheKey = () =>
+        herb ? "herb-wilt" : "vegetation-sway-v1";
     }
+    const elbow = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.22, 0.015, 0),
+      new THREE.Vector3(0.35, 0.14, 0), new THREE.Vector3(0.36, 0.52, 0),
+    ]);
+    this.cactusArms = mesh(shape([
+      { geo: new THREE.TubeGeometry(elbow, 7, 0.115, 7, false), pos: [0, 0, 0] },
+      { geo: ball(), pos: [0.36, 0.52, 0], scale: [0.115, 0.115, 0.115] },
+    ]), "#ffffff", PLANT_INSTANCE_CAPACITY);
+    this.cactusFlower = mesh(shape(Array.from({ length: 7 }, (_, i) => {
+      const angle = i * Math.PI * 2 / 7;
+      return { geo: ball(), pos: [0.095 * Math.sin(angle), 0, 0.095 * Math.cos(angle)],
+        rot: [-0.4, angle, 0], scale: [0.07, 0.065, 0.135] };
+    })), "#f2739b", PLANT_INSTANCE_CAPACITY);
+    this.petals = mesh(new THREE.IcosahedronGeometry(1, 0), "#ffffff", PLANT_INSTANCE_CAPACITY);
     this.accents = mesh(
       shape(
         [-1, 0, 1].map((i) => ({
@@ -272,6 +345,9 @@ export class OrganismMeshes {
       ...Object.values(this.animal),
       ...Object.values(this.plantVariants).flat(),
       this.accents,
+      this.petals,
+      this.cactusArms,
+      this.cactusFlower,
       this.trunks,
       this.nests,
       this.perches,
@@ -292,6 +368,7 @@ export class OrganismMeshes {
     remains: PlantRemains[] = [],
     embryos: Animal[] = [],
     carcasses: Carcass[] = [],
+    depthAt?: (x: number, z: number) => number,
   ) {
     this.windTime.value = now ?? 0;
     const refreshPlants =
@@ -311,6 +388,9 @@ export class OrganismMeshes {
         ? [
             ...Object.values(this.plantVariants).flat(),
             this.accents,
+            this.petals,
+            this.cactusArms,
+            this.cactusFlower,
             this.trunks,
             this.deadWood,
             this.leafLitter,
@@ -331,6 +411,15 @@ export class OrganismMeshes {
     const ensureCapacity = (mesh: THREE.InstancedMesh) => {
       if (mesh.count >= mesh.instanceMatrix.count) {
         const capacity = mesh.instanceMatrix.count * 2;
+        const wilt = mesh.geometry.getAttribute("wilt");
+        if (wilt) {
+          const values = new Float32Array(capacity);
+          values.set(wilt.array);
+          mesh.geometry.setAttribute(
+            "wilt",
+            new THREE.InstancedBufferAttribute(values, 1),
+          );
+        }
         const matrix = new Float32Array(capacity * 16);
         matrix.set(mesh.instanceMatrix.array);
         const color = mesh.instanceColor
@@ -501,6 +590,10 @@ export class OrganismMeshes {
       const round = this.animal.round,
         limb = this.animal.limb,
         angular = this.animal.angular;
+      if (a.state === "Sleeping" && hasAquaticModel(a)) {
+        aquaticModel(a, part, this.animal, this.eyes, coat, light, dark);
+        continue;
+      }
       if (a.state === "Sleeping") {
         const breath = 1 + Math.sin(a.age * 1.8) * 0.025;
         const eye = (x: number, y: number, z: number) =>
@@ -517,18 +610,12 @@ export class OrganismMeshes {
               0.22 * (1 - j * 0.025),
               0.17 * breath,
               0.21 * (1 - j * 0.025),
-              j % 2 ? coat : dark,
+              j % 3 === 1 && g.markings > 0.35 ? dark : coat,
             );
           }
           part(round, 0.13, 0.35, 0.12, 0.25, 0.15, 0.22, coat);
+          part(round, 0.29, 0.32, 0.12, 0.13, 0.075, 0.13, light);
           eye(0.24, 0.42, 0.27);
-        } else if (a.species === "turtle") {
-          part(round, 0, 0.33, 0, 0.57 * g.length, 0.36 * breath, 0.57, dark);
-          for (let j = 0; j < 4; j++)
-            part(angular, -0.3 + j * 0.18, 0.64, 0, 0.12, 0.05, 0.3, coat);
-          part(round, 0.21, 0.13, 0, 0.16, 0.12, 0.16, light);
-          for (const side of [-1, 1])
-            part(round, -0.15, 0.1, side * 0.3, 0.15, 0.08, 0.1, coat);
         } else if (a.species === "bird") {
           part(round, 0, 0.3, 0, 0.45 * g.length, 0.33 * breath, 0.36, coat);
           for (const side of [-1, 1])
@@ -561,49 +648,6 @@ export class OrganismMeshes {
             Math.PI / 2,
           );
           eye(-0.23, 0.45, 0.31);
-        } else if (
-          a.species === "fish" ||
-          a.species === "crocodile" ||
-          a.species === "frog"
-        ) {
-          const croc = a.species === "crocodile",
-            fish = a.species === "fish";
-          part(
-            round,
-            0,
-            0.2,
-            0,
-            (croc ? 0.85 : fish ? 0.65 : 0.42) * g.length,
-            0.2 * breath,
-            fish ? 0.2 : 0.35,
-            coat,
-          );
-          part(
-            round,
-            croc ? 0.9 : 0.38,
-            0.17,
-            0,
-            croc ? 0.5 : 0.23,
-            0.14,
-            0.2,
-            light,
-          );
-          if (croc || fish)
-            for (let j = 0; j < 4; j++)
-              part(
-                round,
-                -0.5 - j * 0.2,
-                0.13,
-                j * 0.035,
-                0.22 * (1 - j * 0.16),
-                0.1,
-                0.15 * (1 - j * 0.15),
-                dark,
-              );
-          for (const side of [-1, 1])
-            part(limb, -0.1, 0.1, side * 0.25, 0.25, 0.08, 0.15, coat);
-          if (fish) part(this.eyes, 0.5, 0.23, 0.17, 0.04, 0.04, 0.04, dark);
-          else eye(croc ? 1.1 : 0.48, 0.26, 0.17);
         } else if (a.species === "bug") {
           part(round, 0, 0.18, 0, 0.48 * g.length, 0.2 * breath, 0.3, coat);
           part(round, 0.35, 0.14, 0, 0.2, 0.15, 0.2, light);
@@ -668,94 +712,109 @@ export class OrganismMeshes {
       }
       let headX = 0.55 * g.length,
         headY = 0.65;
-      if (["fish", "turtle", "crocodile", "frog"].includes(a.species)) {
-        const fish = a.species === "fish",
-          turtle = a.species === "turtle",
-          croc = a.species === "crocodile";
-        headX = (croc ? 1 : fish ? 0.6 : 0.45) * g.length;
-        headY = (fish ? 0.25 : 0.35) - pose.headDip * 0.5;
-        part(
-          round,
-          0,
-          0.3,
-          0,
-          (croc ? 0.85 : fish ? 0.65 : 0.5) * g.length,
-          turtle ? 0.38 : 0.25,
-          turtle ? 0.55 : fish ? 0.22 : 0.35,
+      if (hasAquaticModel(a)) {
+        ({ headX, headY } = aquaticModel(
+          a,
+          part,
+          this.animal,
+          this.eyes,
           coat,
-        );
-        part(round, headX, headY, 0, croc ? 0.55 : 0.28, 0.2, 0.22, light);
-        if (turtle) {
-          part(round, -0.05, 0.48, 0, 0.57 * g.length, 0.35, 0.58, dark);
-          for (let j = 0; j < 4; j++)
-            part(angular, -0.3 + j * 0.18, 0.79, 0, 0.12, 0.05, 0.3, coat);
-        }
-        if (fish || croc)
-          for (let j = 0; j < 4; j++)
-            part(
-              fish ? angular : round,
-              -0.5 - j * 0.22,
-              0.22,
-              Math.sin(phase - j) * 0.14,
-              0.22 * (1 - j * 0.15),
-              fish ? 0.25 : 0.13,
-              0.18 * (1 - j * 0.15),
-              dark,
-              0,
-              0,
-              fish ? Math.PI / 2 : 0,
-            );
-        if (!fish)
-          for (const side of [-1, 1])
-            for (const end of [-1, 1])
-              part(
-                limb,
-                end * 0.35,
-                0.12,
-                side * 0.4,
-                0.28 *
-                  g.limbs *
-                  (a.species === "frog" && end < 0 ? 1.4 + pose.frogHop : 1),
-                0.13,
-                0.25,
-                coat,
-                0,
-                a.species === "frog"
-                  ? side * (0.7 - pose.frogHop * 1.2)
-                  : side * swing,
-                0,
-              );
-        else
-          for (const side of [-1, 1])
-            part(
-              angular,
-              0,
-              0.2,
-              side * 0.26,
-              0.12,
-              0.35,
-              0.06,
-              light,
-              side * 0.6,
-              0,
-              Math.PI / 2,
-            );
+          light,
+          dark,
+          (a.species === "turtle" || a.species === "crocodile") &&
+            (depthAt?.(a.x, a.z) ?? 0) > 0.2,
+        ));
       } else if (a.species === "snake") {
         headX = 0.8 * g.length;
-        headY = 0.24 - pose.headDip * 0.5;
-        for (let j = 0; j < 10; j++) {
-          const taper = 1 - j * 0.065;
-          const wave = Math.sin(phase - j * 0.65) * 0.22 * g.stride;
+        // A snake draws prey in, then swallows in a wave along its neck.
+        const swallow = (a.age * 0.38 * g.cadence + a.id) % 1;
+        const gape =
+          pose.eating && swallow < 0.45
+            ? Math.sin((Math.PI * swallow) / 0.45)
+            : 0;
+        headY = pose.eating ? 0.23 + gape * 0.025 : 0.24 - pose.headDip * 0.5;
+        const amplitude = 0.22 * g.stride;
+        const headZ = Math.sin(phase) * amplitude;
+        part(round, headX, headY, headZ, 0.23, 0.115, 0.16, coat);
+        part(
+          round,
+          headX + 0.15,
+          headY - 0.035 - gape * 0.045,
+          headZ,
+          0.15,
+          0.075,
+          0.115,
+          light,
+          0,
+          0,
+          -gape * 0.24,
+        );
+        if (moving && Math.sin(a.age * 5 + a.id) > 0.58) {
+          part(
+            limb,
+            headX + 0.34,
+            headY - 0.04,
+            headZ,
+            0.16,
+            0.014,
+            0.016,
+            dark,
+          );
+          for (const side of [-1, 1])
+            part(
+              limb,
+              headX + 0.44,
+              headY - 0.04,
+              headZ + side * 0.025,
+              0.085,
+              0.012,
+              0.012,
+              dark,
+              0,
+              -side * 0.45,
+            );
+        }
+        // Span adjacent wave points so the tapered tail stays connected as it bends.
+        for (let j = 0; j < 14; j++) {
+          const t = j / 13,
+            dx = 0.16 * g.length;
+          const z0 = Math.sin(phase - j * 0.43) * amplitude;
+          const z1 = Math.sin(phase - (j + 1) * 0.43) * amplitude;
+          const swelling =
+            pose.eating && swallow > 0.25
+              ? 0.075 *
+                Math.max(0, 1 - Math.abs(j - (swallow - 0.25) * 10) / 1.7) *
+                Math.sin((Math.PI * (swallow - 0.25)) / 0.75)
+              : 0;
+          const radius =
+            0.045 + 0.13 * Math.sin(Math.PI * (0.13 + 0.87 * t)) + swelling;
+          const x = headX - (j + 0.5) * dx,
+            z = (z0 + z1) / 2;
+          const y =
+            0.055 + radius * 0.56 + (headY - 0.18) * Math.max(0, 1 - j / 3);
           part(
             round,
-            headX - j * 0.22 * g.length,
-            0.2,
-            wave,
-            0.24 * taper,
-            0.22 * taper,
-            0.23 * taper,
-            j % 2 && g.markings > 0.35 ? dark : coat,
+            x,
+            y,
+            z,
+            Math.hypot(dx, z1 - z0) * 0.83,
+            radius * 0.78,
+            radius,
+            coat,
+            0,
+            Math.atan2(z1 - z0, dx),
           );
+          if (j % 3 === 1 && g.markings > 0.12)
+            part(
+              round,
+              x,
+              y + radius * 0.61,
+              z,
+              0.055 * g.length,
+              0.035,
+              radius * (0.45 + 0.45 * g.markings),
+              dark,
+            );
         }
       } else {
         const bug = a.species === "bug",
@@ -782,6 +841,22 @@ export class OrganismMeshes {
           0.25 * look.head,
           light,
         );
+        if (bug) {
+          for (const side of [-1, 1])
+            part(
+              limb,
+              headX + 0.22,
+              headY + 0.23,
+              side * 0.17,
+              0.24,
+              0.027,
+              0.027,
+              dark,
+              0,
+              -side * 0.45,
+              0.55,
+            );
+        }
         if (!bug && !bird) {
           // Paired cheeks and a dark nose make small silhouettes readable.
           for (const side of [-1, 1])
@@ -1047,16 +1122,59 @@ export class OrganismMeshes {
               );
               continue;
             }
+            if (bug) {
+              // Front and rear legs move together with the opposite middle leg.
+              const step = footPose(
+                phase + (j + (side > 0 ? 1 : 0)) * Math.PI,
+                moving ? 0.19 * g.stride : 0,
+                moving ? 0.09 : 0,
+              );
+              const tipX = x + (j - 1) * 0.15 + step.x;
+              const tipY = 0.025 + step.y;
+              const tipZ = side * (0.24 + 0.32 * g.limbs);
+              const kneeX = (x + tipX) / 2;
+              const kneeY = 0.22 + step.y * 0.4;
+              const kneeZ = side * (0.23 + 0.15 * g.limbs);
+              const leg = (
+                ax: number,
+                ay: number,
+                az: number,
+                bx: number,
+                by: number,
+                bz: number,
+              ) => {
+                const dx = bx - ax,
+                  dy = by - ay,
+                  dz = bz - az;
+                // Rotate the local Y axis onto the segment (Euler XYZ).
+                part(
+                  limb,
+                  (ax + bx) / 2,
+                  (ay + by) / 2,
+                  (az + bz) / 2,
+                  0.045,
+                  Math.hypot(dx, dy, dz),
+                  0.045,
+                  dark,
+                  Math.atan2(dz, dy),
+                  0,
+                  -Math.atan2(dx, Math.hypot(dy, dz)),
+                );
+              };
+              leg(x, 0.19, side * 0.19, kneeX, kneeY, kneeZ);
+              leg(kneeX, kneeY, kneeZ, tipX, tipY, tipZ);
+              continue;
+            }
             part(
               limb,
               x,
               height * 0.45,
-              side * (bug ? 0.38 * g.limbs : 0.24),
-              bug ? 0.08 : 0.13,
+              side * 0.24,
+              0.13,
               height * 0.9,
-              bug ? 0.35 * g.limbs : 0.13,
+              0.13,
               dark,
-              bug ? side * 0.65 : 0,
+              0,
               0,
               swing * side * (j % 2 ? 1 : -1),
             );
@@ -1094,7 +1212,7 @@ export class OrganismMeshes {
           );
         }
       }
-      if (pose.eating || pose.drinking) {
+      if ((pose.eating && a.species !== "snake") || pose.drinking) {
         part(
           round,
           headX + 0.23,
@@ -1182,12 +1300,12 @@ export class OrganismMeshes {
       }
       const eyeZ =
         a.species === "snake" ? Math.sin(phase) * 0.22 * g.stride : 0;
-      for (const side of [-1, 1])
+      for (const side of hasAquaticModel(a) ? [] : [-1, 1])
         part(
           this.eyes,
           headX + 0.16,
-          headY + 0.08,
-          eyeZ + side * 0.18,
+          headY + (a.species === "snake" ? 0.055 : 0.08),
+          eyeZ + side * (a.species === "snake" ? 0.105 : 0.18),
           0.05 * look.eye,
           0.05 * look.eye,
           0.05 * look.eye,
@@ -1215,6 +1333,11 @@ export class OrganismMeshes {
           form.crown *
           life.foliage,
       );
+      if (p.kind === "bush" && p.variety === 2) {
+        this.dummy.scale.x *= 1 - life.damage * 0.26;
+        this.dummy.scale.z *= 1 - life.damage * 0.26;
+        this.dummy.scale.y *= 1 - life.damage * 0.18;
+      }
       put(mesh, p.id);
       this.color.set(
         p.kind === "grass"
@@ -1224,9 +1347,53 @@ export class OrganismMeshes {
             : "#416e51",
       );
       this.color.offsetHSL(p.defense * 0.03, 0, p.growth * 0.035);
-      this.color.lerp(this.dryPlantColor, 1 - p.health / 100);
+      if (p.kind === "grass") {
+        const wilt = mesh.geometry.getAttribute("wilt");
+        wilt.setX(mesh.count - 1, life.wilt);
+        wilt.needsUpdate = true;
+        this.color.lerp(this.shootColor, life.newGrowth);
+      }
+      this.color.lerp(
+        this.dryPlantColor,
+        Math.max(life.aging * 0.85, life.damage),
+      );
       this.color.lerp(new THREE.Color("#b6a16a"), life.drought * 0.65);
       this.color.lerp(new THREE.Color("#a4ad78"), life.flooding * 0.65);
+      if (p.kind === "bush" && p.variety === 2) {
+        const age = life.lifespanFraction;
+        const maturity = p.age / PLANTS.bush.maturity;
+        const ground = this.dummy.position.y;
+        const { x: width, y: height, z: depth } = this.dummy.scale;
+        this.color.set("#4c9866").lerp(this.dryPlantColor, life.damage)
+          .lerp(this.weatheredCactus, THREE.MathUtils.smoothstep(age, 0.85, 0.98));
+        for (const side of [-1, 1]) {
+          const start = side === 1 ? 0.69 : 0.78;
+          const fall = THREE.MathUtils.smoothstep(age, start, start + 0.13);
+          const fade = THREE.MathUtils.smoothstep(age, start + 0.14, start + 0.20);
+          const scale = THREE.MathUtils.smoothstep(maturity, 0.22, 0.94) * (1 - fade);
+          if (scale <= 0) continue;
+          const yaw = p.id + (side === 1 ? 0 : Math.PI);
+          const reach = width * (0.14 + fall * 0.45);
+          this.dummy.position.set(p.x + reach * Math.cos(yaw),
+            ground + height * THREE.MathUtils.lerp(side === 1 ? 0.76 : 0.49, 0.12, fall * fall),
+            p.z - reach * Math.sin(yaw));
+          this.dummy.rotation.set(fall * Math.PI / 2, yaw, -fall * 0.75, "YXZ");
+          // Roll the detached elbow onto its side so it rests flat on the soil.
+          this.dummy.scale.set(width * scale, height * scale, depth * scale);
+          put(this.cactusArms, p.id);
+          this.cactusArms.setColorAt(this.cactusArms.count - 1, this.color);
+        }
+        const bloom = THREE.MathUtils.smoothstep(maturity, 0.92, 1.14) *
+          (1 - THREE.MathUtils.smoothstep(age, 0.64, 0.74)) *
+          THREE.MathUtils.smoothstep(p.health, 12, 70);
+        if (bloom > 0) {
+          this.dummy.position.set(p.x, ground + 1.64 * height, p.z);
+          this.dummy.rotation.set(0, p.id, 0);
+          this.dummy.scale.set(width * bloom, height * bloom, depth * bloom);
+          put(this.cactusFlower, p.id);
+        }
+        this.dummy.rotation.order = "XYZ";
+      }
       mesh.setColorAt(mesh.count - 1, this.color);
       if (
         (p.kind === "grass" && p.variety === 2) ||
@@ -1235,11 +1402,41 @@ export class OrganismMeshes {
         const y = this.dummy.position.y;
         this.dummy.position.y =
           y + (p.kind === "grass" ? 0.65 : 0.8) * this.dummy.scale.y;
-        put(this.accents, p.id);
-        this.accents.setColorAt(
-          this.accents.count - 1,
-          this.color.set(p.kind === "grass" ? "#eed3a3" : "#b85369"),
-        );
+        if (p.kind === "grass") {
+          // Bend the flower head around the same rooted stem as its foliage.
+          const arch = life.wilt * 0.65 ** 2;
+          const dx = 0.64 * arch * this.dummy.scale.x,
+            dz = 0.22 * arch * this.dummy.scale.z;
+          this.dummy.position.x += dx * Math.cos(p.id) + dz * Math.sin(p.id);
+          this.dummy.position.z += dz * Math.cos(p.id) - dx * Math.sin(p.id);
+          this.dummy.position.y -= 0.9 * arch * this.dummy.scale.y;
+          this.dummy.rotation.z = -life.wilt * 0.85;
+        }
+        if (p.kind === "grass") {
+          const open = THREE.MathUtils.smoothstep(1 - life.newGrowth, 0.35, 0.96);
+          const { x, y: headY, z } = this.dummy.position;
+          const { x: width, y: height } = this.dummy.scale;
+          for (let petal = 0; petal < 5; petal++) {
+            const angle = p.id + petal * Math.PI * 2 / 5;
+            const fall = THREE.MathUtils.smoothstep(Math.max(life.aging, life.damage), 0.45 + petal * 0.075, 0.7 + petal * 0.07);
+            if (fall >= 1) continue;
+            const radius = width * (0.025 + open * 0.14 + fall * 0.55);
+            this.dummy.position.set(
+              x + radius * Math.cos(angle),
+              THREE.MathUtils.lerp(headY + height * 0.055 * (1 - open), y + 0.01, fall * fall),
+              z + radius * Math.sin(angle),
+            );
+            this.dummy.rotation.set(0, -angle, (1 - open) * 1.15 - fall * 0.6, "YXZ");
+            const length = width * (0.055 + open * 0.11) * (1 - fall ** 5);
+            this.dummy.scale.set(length, length * 0.28, length * 0.58);
+            put(this.petals, p.id);
+            this.petals.setColorAt(this.petals.count - 1, this.color.set("#bed184").lerp(this.bloomColor, open));
+          }
+          this.dummy.rotation.set(0, p.id, 0, "XYZ");
+        } else {
+          put(this.accents, p.id);
+          this.accents.setColorAt(this.accents.count - 1, this.color.set("#b85369"));
+        }
         this.dummy.position.y = y;
       }
       if (p.kind === "tree") {

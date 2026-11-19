@@ -1,3 +1,4 @@
+import { waterDepth as gaitWaterDepth } from "./ecology.ts";
 import { lineageIdentity, lineageBadge } from "./lineage-identity.ts";
 import { LineageOverlay } from "./lineage-overlay.ts";
 import { recordEvolution } from "./evolution-history.ts";
@@ -281,6 +282,7 @@ function draw(dt: number) {
       world.plantRemains,
       world.eggs.map((e) => e.embryo),
       world.carcasses,
+      (x, z) => gaitWaterDepth(world.ponds, x, z, world.weather.land),
     );
     measured("organism meshes", organismStart);
     meshWorld = world;
