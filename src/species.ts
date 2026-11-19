@@ -90,7 +90,7 @@ export const SPECIES = freezeProfile({
     hue: 0.3,
     diet: "Bugs and worms",
     gait: "Hop / swim",
-    clutchSize: 8,
+    clutchSize: 2000,
     incubation: 25,
   }),
   mouse: defineAnimal("mammal", {
@@ -144,7 +144,7 @@ export const SPECIES = freezeProfile({
     hue: 0.29,
     diet: "Foliage, remains and mushrooms",
     gait: "Six-legged crawl",
-    clutchSize: 8,
+    clutchSize: 100,
     incubation: 18,
   }),
   bird: defineAnimal("bird", {

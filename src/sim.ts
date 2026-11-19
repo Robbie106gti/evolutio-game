@@ -565,7 +565,31 @@ export class World {
     inheritance?: { mate: Animal } | { clone: true },
   ) {
     const profile = SPECIES[parent.species];
-    for (let n = 0; n < Math.min(profile.clutchSize, available); n++) {
+    const laid = Math.min(profile.clutchSize, available);
+    let developing = laid;
+    if (parent.species === "frog" || parent.species === "bug") {
+      // Sample early egg losses in bulk. Geometric gaps give the same binomial
+      // outcome as one trial per egg, with work proportional to survivors.
+      const frog = parent.species === "frog";
+      const site = frog ? this.ponds.reduce((best, pond) =>
+        Math.hypot(pond.x - parent.x, pond.z - parent.z) <
+        Math.hypot(best.x - parent.x, best.z - parent.z) ? pond : best) : parent;
+      const quality = frog
+        ? Math.min(1, waterDepth(this.ponds, site.x, site.z, this.weather.land))
+        : landAt(this.weather.land, site.x, site.z).moisture;
+      const chance = frog ? 0.004 + 0.012 * quality : 0.08 + 0.17 * quality;
+      const logFailure = Math.log1p(-chance);
+      developing = 0;
+      let index = -1;
+      while (true) {
+        index += 1 + Math.floor(Math.log1p(-this.random()) / logFailure);
+        if (index >= laid) break;
+        developing++;
+      }
+    }
+    this.eggsLaid += laid;
+    this.eggsLost += laid - developing;
+    for (let n = 0; n < developing; n++) {
       const embryo = this.addAnimal(
         parent.kind,
         parent,
@@ -642,7 +666,7 @@ export class World {
         duration: profile.incubation,
         health: 100,
       });
-      this.eggsLaid++;
+
     }
     if (parent.species === "snake") {
       parent.energy -= 4;

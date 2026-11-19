@@ -231,9 +231,9 @@ nursery.plants = [];
 const insectParent = nursery.addAnimal("grazer", undefined, "bug");
 insectParent.x = -30;
 insectParent.z = 25;
-nursery.layClutch(insectParent, 8);
+nursery.layClutch(insectParent);
 assert(
-  nursery.eggs.length === 8 && nursery.animals.length === 1,
+  nursery.eggsLaid === 100 && nursery.eggs.length > 0 && nursery.eggs.length + nursery.eggsLost === 100 && nursery.animals.length === 1,
   "Bugs lay a clutch rather than instant babies",
 );
 assert(
@@ -255,7 +255,7 @@ assert(
 for (const e of nursery.eggs) e.age = e.duration - 0.01;
 nursery.step(0.1);
 assert(
-  Number(nursery.eggs.length) === 0 && nursery.births + nursery.eggsLost === 8,
+  Number(nursery.eggs.length) === 0 && nursery.births + nursery.eggsLost === 100,
   "Hatching accounts for survivors and egg losses",
 );
 const aquaticWorld = new World(4);
