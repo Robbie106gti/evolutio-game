@@ -649,7 +649,7 @@ export function decodeSave(raw: string): Session {
         number(p.variety, 0, 2) &&
         number(p.x, -WORLD_RADIUS - 2, WORLD_RADIUS + 2) &&
         number(p.z, -WORLD_RADIUS - 2, WORLD_RADIUS + 2) &&
-        number(p.size, 0.22, 1.1) &&
+        number(p.size, p.kind === "grass" ? 0.18 : 0.22, 1.1) &&
         number(p.decay, 0, 1),
     )
   )
