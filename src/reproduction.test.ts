@@ -178,3 +178,46 @@ check(
   grove.animals.some((a) => a.species === "mouse" && a.otherParent),
   "First Grove can produce a two-parent mouse litter",
 );
+
+// Every species uses the same two-parent eligibility, with its own brood type.
+for (const species of Object.keys(SPECIES) as Species[]) {
+  const w = island();
+  const a = adult(w, species, "female");
+  a.age = 100;
+  a.genes.maturation = 1;
+  a.genes.longevity = 1;
+  stepReproduction(w, () => 1);
+  assert.equal(
+    w.births + w.eggs.length,
+    0,
+    species + " must not reproduce alone immediately",
+  );
+  const b = adult(w, species, "male", 5);
+  b.age = 100;
+  b.genes.maturation = 1;
+  b.genes.longevity = 1;
+  stepReproduction(w, () => 1);
+  assert.equal(a.reproductive?.mate, b.id, species + " pairs");
+  w.time = a.reproductive!.due!;
+  stepReproduction(w, () => 1);
+  const young = [...w.animals, ...w.eggs.map((e) => e.embryo)].filter(
+    (c) => c.parent === a.id,
+  );
+  assert.ok(young.length > 0);
+  assert.ok(young.every((c) => c.otherParent === b.id));
+  assert.ok(a.energy <= 93); // At least 32 energy; buried eggs also cost digging energy.
+}
+
+const hungryPair = island();
+const hungryMother = adult(hungryPair, "wolf", "female");
+const hungryFather = adult(hungryPair, "wolf", "male", 5);
+hungryMother.age = hungryFather.age = 100;
+stepReproduction(hungryPair, dry);
+check(hungryMother.reproductive?.mate, "Healthy wolves pair");
+hungryPair.time = hungryMother.reproductive!.due!;
+hungryMother.energy = 20;
+stepReproduction(hungryPair, dry);
+assert.equal(hungryPair.births, 0, "Energy-poor mothers delay delivery");
+hungryMother.energy = 80;
+stepReproduction(hungryPair, dry);
+assert.ok(hungryPair.births > 0);

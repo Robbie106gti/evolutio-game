@@ -1,3 +1,4 @@
+import { disperseSeed, storeDormantSeed } from "./seed-dispersal.ts";
 import {
   createEvolutionArchive,
   recordEvolution,
@@ -699,14 +700,21 @@ export class World {
       Math.floor(this.time / 2) > Math.floor((this.time - dt) / 2) &&
       this.seedBank.length
     ) {
-      const index = Math.floor(this.random() * this.seedBank.length),
-        seed = this.seedBank[index];
-      if (
-        landAt(this.weather.land, seed.x, seed.z).moisture > 0.3 &&
-        depthAt(seed.x, seed.z) < 0.1 &&
-        this.addPlant(seed)
-      )
-        this.seedBank.splice(index, 1);
+      // Sample plant types fairly so prolific grasses cannot monopolize recovery.
+      const kinds = [...new Set(this.seedBank.map((seed) => seed.kind))];
+      const kind = kinds[Math.floor(this.random() * kinds.length)];
+      const candidates = this.seedBank.filter((seed) => seed.kind === kind);
+      const seed = candidates[Math.floor(this.random() * candidates.length)];
+      const site = disperseSeed(
+        seed,
+        () => this.random(),
+        (x, z) =>
+          Math.hypot(x, z) < WORLD_RADIUS - 1 &&
+          depthAt(x, z) < 0.1 &&
+          landAt(this.weather.land, x, z).moisture > 0.3,
+      );
+      if (site && this.addPlant(seed, site.x, site.z))
+        this.seedBank.splice(this.seedBank.indexOf(seed), 1);
     }
 
     // Resolve shared nursery sites once per step, including eggs and orphaned broods.
@@ -853,11 +861,10 @@ export class World {
         p.age > PLANTS[p.kind].maturity &&
         p.energy > PLANTS[p.kind].capacity * 0.6 &&
         p.depletion === 0 &&
-        Math.floor(p.age / 60) > Math.floor((p.age - dt) / 60) &&
-        this.seedBank.length < 240
+        Math.floor(p.age / 60) > Math.floor((p.age - dt) / 60)
       ) {
-        this.seedBank.push({ ...p, expression: { ...p.expression } });
-        p.energy -= PLANTS[p.kind].seedCost * 0.2;
+        if (storeDormantSeed(this.seedBank, p))
+          p.energy -= PLANTS[p.kind].seedCost * 0.2;
       }
       // Ten ID-based cohorts spread one-second growth work across ten ticks.
       const phase = (p.id % 10) * 0.1;

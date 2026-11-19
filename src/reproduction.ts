@@ -1,15 +1,23 @@
 import { canReproduce } from "./biology.ts";
 import type { Animal, Genes, Species } from "./model.ts";
+import { treeRestSite } from "./resting.ts";
+import { SPECIES } from "./species.ts";
 import { SpatialGrid } from "./terrain.ts";
 import type { World } from "./sim.ts";
 
 const modes = {
   mouse: "litter",
   fox: "litter",
+  cat: "litter",
+  wolf: "litter",
+  bug: "eggs",
+  bird: "eggs",
+  crocodile: "eggs",
+  frog: "eggs",
   snake: "eggs",
   fish: "eggs",
   turtle: "eggs",
-} as const;
+} as const satisfies Record<Species, "litter" | "eggs">;
 type ReproductiveSpecies = keyof typeof modes;
 export function usesMate(species: Species): species is ReproductiveSpecies {
   return Object.hasOwn(modes, species);
@@ -117,7 +125,19 @@ export function stepReproduction(
   const report = (event: string) => world.events.unshift(event);
   for (const a of pending) {
     const state = a.reproductive!;
-    if (state.due! > now || !safe(a)) continue;
+    if (state.due! > now || !safe(a) || a.energy < 32) continue;
+    // Birds return to their chosen nest before laying; keep gestation pending.
+    if (a.species === "bird" && a.roost) {
+      const tree = world.plants.find((p) => p.id === a.roost && p.health > 0);
+      if (tree) {
+        const site = treeRestSite(tree, a.id, world.weather.land);
+        if (
+          Math.hypot(a.x - site.x, a.z - site.z) > 0.7 ||
+          Math.abs(a.altitude - site.altitude) > 0.3
+        )
+          continue;
+      }
+    }
     const mate = parents?.get(state.mate!);
     delete state.mate;
     delete state.due;
@@ -128,15 +148,18 @@ export function stepReproduction(
         `${a.species[0].toUpperCase()}${a.species.slice(1)} #${a.id} laid eggs with parent #${mate.id}`,
       );
     } else {
-      const count = 2 + Number(world.random() < 0.4);
+      const count =
+        (a.species === "mouse" ? 2 : 1) + Number(world.random() < 0.4);
       for (let i = 0; i < count; i++)
         world.addAnimal(a.kind, a, undefined, false, { mate });
       world.births += count;
       report(
-        `${a.species === "mouse" ? "Mouse" : "Fox"} #${a.id} had ${count} young with parent #${mate.id}`,
+        `${SPECIES[a.species].label} #${a.id} had ${count} young with parent #${mate.id}`,
       );
     }
-    a.cooldown = 40;
+    // Pay the remaining reproductive investment only when young are delivered.
+    a.energy -= 16;
+    a.cooldown = a.species === "bug" ? 24 : a.species === "mouse" ? 40 : 60;
   }
 
   const receptive = (a: Animal) =>
@@ -154,7 +177,10 @@ export function stepReproduction(
     )
       continue;
     const near = neighborhoods
-      ? (neighborhoods.get(a.id) ?? []).map((id) => adultById!.get(id)!)
+      ? (neighborhoods.get(a.id) ?? []).flatMap((id) => {
+          const mate = adultById!.get(id);
+          return mate ? [mate] : [];
+        })
       : nearbyMates(grid!, a);
     const males = near.filter((b) => reproductiveSex(b) === "male");
     if (a.species === "fish" && depthAt(a.x, a.z) < 0.2) {
@@ -248,7 +274,8 @@ export function stepReproduction(
     if (distance(a, closest) > 2) continue;
     const state = (a.reproductive ??= {});
     state.mate = closest.id;
-    state.due = now + (a.species === "mouse" ? 9 : 14);
+    state.due =
+      now + (a.species === "bug" ? 4 : a.species === "mouse" ? 9 : 14);
     a.energy -= 16;
     closest.energy -= 6;
     closest.cooldown = 18;
