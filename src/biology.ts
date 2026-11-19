@@ -6,8 +6,11 @@ export const huntsAnimals = (a: Animal) =>
     : SPECIES[a.species].prey.length > 0;
 
 export const canHunt = (predator: Animal, prey: Animal) => {
+  if (prey.webOwnerId && prey.webOwnerId !== predator.id && (prey.webHeldUntilAge ?? 0) > prey.age) return false;
   if (prey.altitude > 0.6 && predator.species !== "bird") return false;
-  if (predator.species === "spider" && (prey.species === "mouse" || prey.species === "bird"))
+  const smallVertebrate = prey.species === "mouse" || prey.species === "bird";
+  if ((predator.species === "spider" && smallVertebrate) ||
+      (predator.species === "scorpion" && (smallVertebrate || prey.species === "frog")))
     return grownBodySize(prey) <= grownBodySize(predator) * 0.85;
   if (prey.species === "crocodile")
     return lifeStage(prey) === "Baby" &&
@@ -38,6 +41,7 @@ export const canHunt = (predator: Animal, prey: Animal) => {
 
 export function canHuntAt(predator: Animal, prey: Animal, depthAt: (x: number, z: number) => number) {
   if (!canHunt(predator, prey)) return false;
+  if (predator.species === "scorpion" && depthAt(prey.x, prey.z) > 0.15) return false;
   if (prey.species === "crocodile")
     return depthAt(prey.x, prey.z) <= (predator.species === "bird" ? 0.4 : 0.2);
   if (predator.species !== "crocodile") return true;

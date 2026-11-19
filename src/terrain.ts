@@ -159,6 +159,17 @@ export class SpatialGrid<T extends { x: number; z: number }> {
 }
 
 export interface LandCell {
+  bugFeedX?: number;
+  bugFeedZ?: number;
+  bugFeedTime?: number;
+  mushroomVisits?: number;
+  routeVisits?: { time: number; tiles: number[] }[];
+  approachCount?: number;
+  approachX?: number;
+  approachZ?: number;
+  mushroomX?: number;
+  mushroomZ?: number;
+  mushroomTime?: number;
   nutrients?: number;
   surfaceWater?: number;
   elevation?: number;
@@ -196,7 +207,7 @@ export function landAt(
   cells: LandCell[] | undefined,
   x: number,
   z: number,
-): LandCell {
+): Omit<LandCell, "routeVisits"> {
   if (!cells) {
     const w = regionWeights(x, z);
     return {
@@ -264,7 +275,7 @@ export function landFieldAt(
   cells: LandCell[] | undefined,
   x: number,
   z: number,
-  field: keyof LandCell,
+  field: Exclude<keyof LandCell, "routeVisits">,
 ): number {
   if (!cells)
     return landAt(cells, x, z)[field] ?? (field === "nutrients" ? 0.5 : 0);

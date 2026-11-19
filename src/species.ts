@@ -121,12 +121,12 @@ export const SPECIES = freezeProfile({
   }),
   spider: defineAnimal("arachnid", {
     label: "Spider", kind: "hunter", plants: false, prey: ["bug", "mouse", "bird"], speed: 0.85,
-    size: 0.45, hue: 0.07, diet: "Bugs, small mice and small grounded birds", gait: "Eight-legged stalk",
-    clutchSize: 8, incubation: 24,
+    size: 0.45, hue: 0.07, diet: "Bugs, small grounded mice and birds, exposed worms", gait: "Eight-legged stalk",
+    clutchSize: 120, incubation: 24,
   }),
   scorpion: defineAnimal("arachnid", {
-    label: "Scorpion", kind: "hunter", plants: false, prey: ["bug", "spider"], speed: 0.65,
-    size: 0.58, hue: 0.11, diet: "Bugs and spiders", gait: "Night prowl",
+    label: "Scorpion", kind: "hunter", plants: false, prey: ["bug", "spider", "mouse", "bird", "frog"], speed: 0.65,
+    size: 0.58, hue: 0.11, diet: "Bugs, spiders, worms and small grounded vertebrates", gait: "Night prowl",
     clutchSize: 3, incubation: 0, capabilities: { reproduction: "live" },
   }),
   crab: defineAnimal("crustacean", {

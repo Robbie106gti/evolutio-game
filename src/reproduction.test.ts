@@ -54,6 +54,21 @@ const restore = (world: World) =>
   decodeSave(encodeSave({ world, rate: 1, paused: true, selected: 0 })).world;
 const dry = () => 0;
 
+const bugPatch = island();
+const layer = adult(bugPatch, "bug", "female");
+const partnerBug = adult(bugPatch, "bug", "male", 5);
+layer.energy = 57;
+partnerBug.energy = 24;
+stepReproduction(bugPatch, dry);
+assert.equal(layer.reproductive?.mate, undefined, "A bug must fund its clutch");
+layer.energy = 58;
+stepReproduction(bugPatch, dry);
+assert.equal(layer.reproductive?.mate, partnerBug.id, "Male bug needs only its own courtship reserve");
+bugPatch.time = layer.reproductive!.due!;
+stepReproduction(bugPatch, dry);
+assert.equal(bugPatch.eggsLaid, 100, "Energy-funded courtship produces a complete pod");
+assert.equal(layer.energy, 26, "The egg layer still pays both reproductive costs");
+
 const mice = island();
 const mother = adult(mice, "mouse", "female");
 const father = adult(mice, "mouse", "male", 5);

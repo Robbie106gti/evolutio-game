@@ -14,7 +14,7 @@ function assert(value: unknown, message: string): asserts value {
 const world = new World(17),
   predator = world.animals.find((a) => a.species === "cat")!,
   prey = world.animals.find((a) => a.species === "bug")!;
-const grass = { hue: 0.23, pattern: 0.25, cover: 0.2, name: "Grassland" };
+const grass = { hue: 0.23, pattern: 0.25, cover: 0.2, name: "Grassland", sand: false };
 prey.genes.hue = -0.06;
 prey.genes.markings = 0.25;
 const matched = camouflage(prey, grass);
@@ -45,6 +45,12 @@ assert(
   detectionRange(predator, prey, grass, 1, true) < sharp,
   "Dens conceal their occupants",
 );
+const scorpion = world.animals.find(a => a.species === "scorpion")!;
+const scouter = { ...scorpion, genes: { ...scorpion.genes, sense: 8, eyesight: 0.5 } };
+const runner = { ...prey, state: "Fleeing" as const, altitude: 0 };
+assert(detectionRange(scouter, runner, grass, 0) === 5, "Scorpions sense moving ground prey in darkness");
+assert(detectionRange(scouter, { ...runner, state: "Sleeping" }, grass, 0) < 5 &&
+  detectionRange(scouter, runner, grass, 0, true) < 5, "Resting and sheltered prey retain concealment");
 const weather = { moisture: 0.7, cloud: 0.4, raining: false },
   ponds = initialPonds();
 let rained = false,

@@ -114,6 +114,13 @@ export interface Animal {
   stamina: number;
   restTimer: number;
   mealSpecies?: Species;
+  stungUntilAge?: number;
+  web?: { x: number; z: number; expires: number; prey: number };
+  webHeldUntilAge?: number;
+  webOwnerId?: number;
+  walkTrail?: { tile: number; time: number }[];
+  lastMushroomCell?: number;
+  lastMushroomTime?: number;
   mealEnergy: number;
   mealX: number;
   mealZ: number;

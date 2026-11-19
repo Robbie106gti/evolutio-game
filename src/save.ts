@@ -216,6 +216,14 @@ export function decodeSave(raw: string): Session {
         c.forest + c.grass <= 1.000001 &&
         (c.elevation === undefined || number(c.elevation, -5, 7)) &&
         (c.sand === undefined || number(c.sand, 0, 1)) &&
+        (c.routeVisits === undefined || (Array.isArray(c.routeVisits) && c.routeVisits.length <= 12 &&
+          c.routeVisits.every((v: any) => v && number(v.time) && Array.isArray(v.tiles) &&
+            v.tiles.length <= 12 && v.tiles.every((t: number) => Number.isInteger(t) && number(t, 0, 65535))))) &&
+        (c.approachCount === undefined || number(c.approachCount, 0, 12)) &&
+        (c.mushroomVisits === undefined || (number(c.mushroomVisits, 1, 8) && number(c.mushroomTime) &&
+          number(c.mushroomX, -WORLD_RADIUS, WORLD_RADIUS) && number(c.mushroomZ, -WORLD_RADIUS, WORLD_RADIUS))) &&
+        (c.bugFeedTime === undefined || (number(c.bugFeedTime) && number(c.bugFeedX, -WORLD_RADIUS, WORLD_RADIUS) &&
+          number(c.bugFeedZ, -WORLD_RADIUS, WORLD_RADIUS))) &&
         (c.nutrients === undefined || number(c.nutrients, 0, 1)) &&
         (c.surfaceWater === undefined || number(c.surfaceWater, 0, 1000)),
     )
@@ -435,6 +443,14 @@ export function decodeSave(raw: string): Session {
       !number(a.stamina, 0, 100) ||
       !number(a.restTimer, 0, 100) ||
       (a.mealSpecies !== undefined && !Object.hasOwn(SPECIES, a.mealSpecies)) ||
+      (a.web !== undefined && (!a.web || a.species !== "spider" || !number(a.web.x, -WORLD_RADIUS, WORLD_RADIUS) ||
+        !number(a.web.z, -WORLD_RADIUS, WORLD_RADIUS) || !number(a.web.expires) || !Number.isInteger(a.web.prey) || a.web.prey < 0)) ||
+      (a.webHeldUntilAge !== undefined && !number(a.webHeldUntilAge)) ||
+      (a.walkTrail !== undefined && (!Array.isArray(a.walkTrail) || a.walkTrail.length > 12 ||
+        !a.walkTrail.every((s: any) => s && Number.isInteger(s.tile) && number(s.tile, 0, 65535) && number(s.time)))) ||
+      (a.lastMushroomTime !== undefined && !number(a.lastMushroomTime)) ||
+      (a.lastMushroomCell !== undefined && !number(a.lastMushroomCell, 0, LAND_SIDE * LAND_SIDE - 1)) ||
+      (a.stungUntilAge !== undefined && !number(a.stungUntilAge)) ||
       !number(a.mealEnergy, 0, 140) ||
       !number(a.mealTime, 0, 100) ||
       !number(a.mealX, -WORLD_RADIUS - 2, WORLD_RADIUS + 2) ||

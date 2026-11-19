@@ -28,6 +28,11 @@ export function reproductiveSex(a: Pick<Animal, "id" | "sex">) {
   return a.sex ?? (Math.imul(a.id, 0x9e3779b1) >>> 31 ? "female" : "male");
 }
 
+// Egg production costs the female 32 energy; the male contributes 6.
+export const courtshipEnergy = (a: Animal) =>
+  a.species === "bug" ? (reproductiveSex(a) === "female" ? 58 : 24)
+    : a.species === "scorpion" && reproductiveSex(a) === "male" ? 42 : 76;
+
 export function mixGenes(
   first: Genes,
   second: Genes,
@@ -52,7 +57,7 @@ export type MateNeighborhoods = Map<number, number[]>;
 const distance = (a: MatePosition, b: MatePosition) =>
   Math.hypot(a.x - b.x, a.z - b.z);
 function nearbyMates<T extends MatePosition>(grid: SpatialGrid<T>, a: T) {
-  const range = a.species === "fish" ? 12 : 20;
+  const range = a.species === "fish" ? 12 : a.species === "bug" ? 32 : a.species === "scorpion" ? 40 : 20;
   return grid
     .near(a.x, a.z, range)
     .filter(
@@ -165,7 +170,7 @@ export function stepReproduction(
 
   const receptive = (a: Animal) =>
     safe(a) &&
-    a.energy >= 76 &&
+    a.energy >= courtshipEnergy(a) &&
     a.cooldown <= 0 &&
     !a.nursery &&
     !dependents.has(a.id) &&
@@ -272,7 +277,10 @@ export function stepReproduction(
       continue;
     }
     (closest.reproductive ??= {}).target = a.id;
-    if (distance(a, closest) > 2) continue;
+    if (distance(a, closest) > 2) {
+      if (a.species === "bug" || a.species === "scorpion") (a.reproductive ??= {}).target = closest.id;
+      continue;
+    }
     const state = (a.reproductive ??= {});
     state.mate = closest.id;
     state.due =

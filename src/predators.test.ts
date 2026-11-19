@@ -1,5 +1,7 @@
+import { recordApproach, recordBugStep } from "./bug-routes.ts";
+import { canHunt } from "./biology.ts";
 import { World, type Species, burstProfile, laysEggs } from "./sim.ts";
-import { landAt } from "./terrain.ts";
+import { landAt, landIndex } from "./terrain.ts";
 import { encodeSave, decodeSave } from "./save.ts";
 function assert(ok: unknown, message: string): asserts ok {
   if (!ok) throw new Error(message);
@@ -70,6 +72,14 @@ assert(
   String(predator.state) === "Recovering",
   "Exhausted predators pause instead of endlessly sprinting",
 );
+const sting = setup("scorpion");
+const caughtBug = sting.world.addAnimal("grazer", undefined, "bug");
+Object.assign(caughtBug, { x: sting.predator.x + 0.3, z: sting.predator.z, age: 30, energy: 0.1 });
+sting.world.step(0.1);
+assert(caughtBug.killedBy === sting.predator.id && sting.predator.mealEnergy > 0, "Scorpion retains its kill");
+assert(!sting.world.foodTotals.scorpion?.bug, "Sting damage does not also award a meal");
+sting.world.step(0.1);
+assert((sting.world.foodTotals.scorpion?.bug ?? 0) > 0, "Scorpion eats the retained catch before foraging for worms");
 const hunt = setup("fox");
 const victim = hunt.world.addAnimal("grazer", undefined, "mouse");
 victim.x = hunt.predator.x + 0.4;
@@ -202,3 +212,59 @@ assert(
 console.log(
   "Species life histories, reproductive windows, evolving endurance and urgent body needs passed",
 );
+for (const species of ["spider", "scorpion"] as const) {
+  const { world, predator } = setup(species);
+  const bug = world.addAnimal("grazer", undefined, "bug");
+  Object.assign(bug, { x: predator.x + 0.6, z: predator.z, age: 30, energy: 25, cooldown: 1000 });
+  predator.state = "Waiting in ambush";
+  predator.angle = Math.PI;
+  for (let i = 0; i < 100; i++) world.step(0.1);
+  assert(bug.killedBy === predator.id && (world.foodTotals[species]?.bug ?? 0) > 0,
+    species + " should capture and feed on a passing bug");
+}
+const trap = setup("spider");
+trap.world.carcasses.push({ id: trap.world.nextId++, x: trap.predator.x + 3, z: trap.predator.z, size: 1, decay: 0 });
+trap.world.step(0.1);
+assert(trap.predator.state === "Searching for prey", "Spider scouts a nearby edible carcass");
+trap.predator.x = trap.world.carcasses[0].x;
+trap.predator.z = trap.world.carcasses[0].z;
+trap.world.step(0.1);
+assert(String(trap.predator.state) === "Waiting in ambush", "Spider waits at insect food");
+for (const species of ["bug", "mouse", "bird"] as const) {
+  const { world, predator } = setup("spider");
+  const visitor = world.addAnimal("grazer", undefined, species);
+  Object.assign(visitor, { x: predator.x + 1, z: predator.z, age: 0, energy: 20, altitude: 0 });
+  visitor.genes.size = 0.6;
+  predator.genes.size = 1.4;
+  predator.web = { x: visitor.x, z: visitor.z, expires: world.time + 45, prey: 0 };
+  world.step(0.1);
+  assert(!canHunt({ ...predator, id: predator.id + 10000 }, visitor) && canHunt(predator, visitor),
+    "Only the web owner can take live trapped prey");
+  assert(predator.web.prey === visitor.id && visitor.webHeldUntilAge! > visitor.age, "Small ground visitor sticks: " + species);
+}
+const patchTrap = setup("spider");
+const patchX = patchTrap.predator.x + 1;
+const patchZ = patchTrap.predator.z;
+Object.assign(patchTrap.world.weather.land![landIndex(patchX, patchZ)], {
+  approachCount: 2, approachX: patchX - 0.5, approachZ: patchZ, fungus: 0.8, mushroomVisits: 3, mushroomX: patchX, mushroomZ: patchZ, mushroomTime: 0,
+});
+patchTrap.world.step(0.1);
+assert(patchTrap.predator.web?.x === patchX - 0.5, "Spider sets its web on the approach to a revisited patch");
+const oversized = patchTrap.world.addAnimal("grazer", undefined, "mouse");
+Object.assign(oversized, { x: patchX, z: patchZ, age: 30 });
+oversized.genes.size = 2;
+patchTrap.world.step(0.1);
+assert(!patchTrap.predator.web.prey && !oversized.webHeldUntilAge, "Oversized visitors pass the web");
+
+const traffic = setup("bug");
+const routeCell = traffic.world.weather.land![0];
+for (const [visit, approach] of [[1, -32], [2, -34], [3, -32]]) {
+  traffic.predator.walkTrail = [];
+  traffic.predator.x = approach;
+  recordBugStep(traffic.predator, visit);
+  recordBugStep(traffic.predator, visit);
+  traffic.predator.x = -30;
+  recordApproach(routeCell, traffic.predator, visit, true);
+  assert(routeCell.approachCount === (visit === 3 ? 2 : 0), "Only distinct visits over a shared tile establish a route");
+}
+assert(routeCell.approachX === -32, "The busiest actual approach wins");

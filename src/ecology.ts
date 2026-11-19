@@ -1,3 +1,4 @@
+import { landIndex } from "./terrain.ts";
 import { recycleLitter } from "./decomposition.ts";
 import { FUNGI } from "./profiles.ts";
 import { type Animal, type Plant } from "./model.ts";
@@ -204,7 +205,8 @@ export function habitat(
       name = "Rock shelter";
     }
   }
-  return { cover, hue, pattern, name };
+  const sand = biome === "Desert" || name === "Bare shore" || (land?.[landIndex(a.x, a.z)]?.sand ?? 0) > 0.3;
+  return { cover, hue, pattern, name, sand };
 }
 export function camouflage(a: Animal, terrain: ReturnType<typeof habitat>) {
   const base = {
@@ -229,6 +231,12 @@ export function camouflage(a: Animal, terrain: ReturnType<typeof habitat>) {
       0.3 * (1 - Math.abs(a.genes.markings - terrain.pattern)),
   );
 }
+export function concealedAmbush(a: Animal, terrain: ReturnType<typeof habitat>) {
+  return a.state === "Waiting in ambush" &&
+    (a.species === "spider" || a.species === "scorpion") &&
+    (terrain.cover >= 0.15 || (a.species === "spider" ? terrain.sand : terrain.name === "Desert"));
+}
+
 export function detectionRange(
   observer: Animal,
   prey: Animal,
@@ -236,6 +244,7 @@ export function detectionRange(
   light: number,
   sheltered = false,
 ) {
+  if (concealedAmbush(prey, terrain)) return Math.min(0.9, 0.45 * observer.genes.eyesight);
   const concealment = camouflage(prey, terrain);
   const motion = [
     "Resting",
@@ -247,8 +256,16 @@ export function detectionRange(
   ].includes(prey.state)
     ? 1
     : 1.2;
+  // Moving ground prey can be sensed through the substrate even in darkness.
+  const groundHunter = observer.species === "scorpion" || observer.species === "spider";
+  const vibrationRange = groundHunter && !sheltered &&
+    prey.altitude < 0.1 &&
+    motion > 1 && !["Waiting in ambush", "Eating remains", "Eating mushrooms"].includes(prey.state)
+    ? observer.species === "spider" ? observer.genes.sense * 0.8
+      : Math.min(5, observer.genes.sense * 0.65)
+    : 0;
   return Math.max(
-    0.8,
+    0.8, vibrationRange,
     (prey.species === "bug" ? 0.65 : 1) *
       observer.genes.sense *
       observer.genes.eyesight *

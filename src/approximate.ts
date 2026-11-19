@@ -57,7 +57,7 @@ interface Patch {
 }
 // Experimental patch encounters. Individuals and finite food pools remain real;
 // exact paths, brain decisions and encounters are deliberately approximated.
-import { usesMate } from "./reproduction.ts";
+import { courtshipEnergy, usesMate } from "./reproduction.ts";
 
 export function stepApproximateAnimals(
   w: World,
@@ -127,7 +127,7 @@ export function stepApproximateAnimals(
     let speed =
       sleep || a.nursery
         ? 0
-        : g.speed *
+        : ((a.webHeldUntilAge ?? 0) > a.age ? 0 : 1) * ((a.stungUntilAge ?? 0) > a.age ? 0.25 : 1) * g.speed *
           SPECIES[a.species].speed *
           (0.25 + 0.75 * g.activity) *
           ageAgility(a);
@@ -343,7 +343,7 @@ export function stepApproximateAnimals(
       } else if (
         w.naturalReproduction &&
         a.reproductive?.target &&
-        a.energy >= 80
+        a.energy >= (a.species === "bug" ? courtshipEnergy(a) : 80)
       ) {
         const partner = byId.get(a.reproductive.target);
         if (partner && partner.energy > 0) {
