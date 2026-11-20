@@ -1,5 +1,5 @@
 import { collectSeed, dropSeed } from "./seed-dispersal.ts";
-import { worthBrowsing, grazePlant, ingest, mealYield } from "./food-energy.ts";
+import { ANIMAL_ENERGY_CAPACITY, worthBrowsing, harvestPlant, ingestPlantFood, ingest, mealYield } from "./food-energy.ts";
 import type { World } from "./sim.ts";
 import type { Animal, Plant } from "./model.ts";
 import {
@@ -13,10 +13,9 @@ import {
 } from "./biology.ts";
 import {
   eatsPlants,
-  plantEfficiency,
   preyEfficiency,
 } from "./mouse-lineages.ts";
-import { PLANTS, SPECIES } from "./species.ts";
+import { SPECIES } from "./species.ts";
 import { FUNGI } from "./profiles.ts";
 import { regionalClimate, eyesightCost } from "./ecology.ts";
 import {
@@ -31,6 +30,7 @@ import {
 import { dailyRhythm } from "./rhythm.ts";
 import { updateExpression } from "./expression.ts";
 import { feedYoung } from "./nursery.ts";
+import { diseaseTarget, hasBreedingHealth, illnessSpeed, illnessVulnerability, prepareAnimalDisease, spreadInfection } from "./animal-disease.ts";
 import {
   consumeRemains,
   eatWorms,
@@ -54,16 +54,16 @@ interface Patch {
   plants: Plant[];
   animals: Animal[];
   remains: EdibleRemains[];
-  infected: number;
 }
 // Experimental patch encounters. Individuals and finite food pools remain real;
 // exact paths, brain decisions and encounters are deliberately approximated.
-import { courtshipEnergy, usesMate } from "./reproduction.ts";
+import { courtshipEnergy, MOUSE_BIRTH_RECOVERY, usesMate } from "./reproduction.ts";
 
 export function stepApproximateAnimals(
   w: World,
   dt: number,
   depthAt: (x: number, z: number) => number,
+  disease = prepareAnimalDisease(w.animals),
 ) {
   if (!supportsApproximation(w))
     throw new Error("Approximate mode currently supports mice and bugs only.");
@@ -72,7 +72,7 @@ export function stepApproximateAnimals(
     const i = landIndex(x, z);
     let p = patches.get(i);
     if (!p) {
-      p = { plants: [], animals: [], remains: [], infected: 0 };
+      p = { plants: [], animals: [], remains: [] };
       patches.set(i, p);
     }
     return p;
@@ -83,7 +83,6 @@ export function stepApproximateAnimals(
   for (const a of animals) {
     const p = patchAt(a.x, a.z);
     p.animals.push(a);
-    if (a.infection > 0.45) p.infected++;
   }
   for (const r of [...w.plantRemains, ...w.carcasses])
     if (r.decay < 1) patchAt(r.x, r.z).remains.push(r);
@@ -124,15 +123,18 @@ export function stepApproximateAnimals(
     const cover = sheltered
       ? 1
       : clamp(soil.forest * 0.7 + soil.grass * 0.15, 0, 0.85);
+    const drive = !a.nursery && a.hydration >= 55 && a.oxygen >= 50 &&
+      water < 0.25 && disease.compelled(a, i, soil.fungus)
+      ? diseaseTarget(a, patch.animals, other => canHunt(other, a)) : undefined;
     const sleep =
-      !dailyRhythm(g, w.time).active && a.energy > 55 && a.hydration > 55;
+      !drive && !dailyRhythm(g, w.time).active && a.energy > 55 && a.hydration > 55;
     let speed =
       sleep || a.nursery
         ? 0
         : ((a.webHeldUntilAge ?? 0) > a.age ? 0 : 1) * ((a.stungUntilAge ?? 0) > a.age ? 0.25 : 1) * g.speed *
           SPECIES[a.species].speed *
           (0.25 + 0.75 * g.activity) *
-          ageAgility(a);
+          ageAgility(a) * illnessSpeed(a);
     a.state = sleep
       ? "Sleeping"
       : a.nursery
@@ -211,17 +213,7 @@ export function stepApproximateAnimals(
       a.deathCause = "drowning";
       continue;
     }
-    a.infection = clamp(
-      a.infection +
-        dt *
-          ((patch.infected / Math.max(1, patch.animals.length)) * 0.025 +
-            soil.fungus * 0.05) *
-          (1 - g.immunity) -
-        dt * (0.012 + g.immunity * 0.025),
-      0,
-      1,
-    );
-    if (a.infection > 0.35) a.energy -= dt * a.infection * 0.12;
+    disease.update(a, i, soil.fungus, dt);
     if (a.energy <= 0) {
       a.deathCause = "disease";
       continue;
@@ -238,7 +230,7 @@ export function stepApproximateAnimals(
       (0.3 + speed * 0.25) * (g.sense / 8),
       dt,
     );
-    if (!sleep && !a.nursery && a.energy < 112 && w.random() < encounter) {
+    if (!drive && !sleep && !a.nursery && a.energy < 112 && w.random() < encounter) {
       let ate = false;
       if (a.species === "bug" && patch.remains.length) {
         const remains = sample(patch.remains);
@@ -269,7 +261,7 @@ export function stepApproximateAnimals(
           w.random() <
             clamp(
               (((0.4 + 0.2 * g.eyesight) * ageVulnerability(prey) * g.speed) /
-                (0.4 + prey.genes.speed)) *
+                (0.4 + prey.genes.speed * illnessSpeed(prey))) *
                 (prey.age < maturityAge(prey) &&
                 guardian &&
                 guardian.energy > 0 &&
@@ -282,10 +274,10 @@ export function stepApproximateAnimals(
         ) {
           const bite = Math.min(
             prey.energy,
-            dt * (5 + g.aggression * 12) * g.size,
+            dt * (5 + g.aggression * 12) * g.size * illnessVulnerability(prey),
           );
           prey.energy -= bite;
-          ingest(w.foodTotals, a, prey.species, bite / 140 * mealYield(prey, a) * preyEfficiency(a));
+          ingest(w.foodTotals, a, prey.species, bite / ANIMAL_ENERGY_CAPACITY * mealYield(prey, a) * preyEfficiency(a));
           if (prey.species === "bug" && bite > 0) a.hasEatenBug = true;
           if (prey.energy <= 0) {
             prey.deathCause = "predation";
@@ -296,16 +288,14 @@ export function stepApproximateAnimals(
         }
       }
       if (!ate && eatsPlants(a) && patch.plants.length) {
-        const p = sample(patch.plants);
-        if (worthBrowsing(p, a.energy) && depthAt(p.x, p.z) < 0.15) {
-          const { removed, eaten: bite } = grazePlant(p, a.species, dt);
+        const edible = (p: Plant) => worthBrowsing(p, a.energy, a.species) && depthAt(p.x, p.z) < 0.15;
+        const sampled = sample(patch.plants);
+        const p = edible(sampled) ? sampled : a.species === "mouse" ? patch.plants.find(edible) : undefined;
+        if (p) {
+          const { removed, eaten: bite } = harvestPlant(p, a, dt, w.treeBrowseDamage);
           if (bite > 0 && !a.seedCargo && w.random() < encounterProbability(0.25, dt))
             collectSeed(w.seedBank, a, p, a.species === "mouse" && a.energy >= 55 ? "cache" : "gut", w.time);
-          ingest(w.foodTotals, a, p.kind, bite *
-            PLANTS[p.kind].nutrition *
-            plantEfficiency(a) *
-            (a.species === "bug" ? 0.55 : 1));
-          a.hydration = Math.min(100, a.hydration + bite * 0.3);
+          ingestPlantFood(w.foodTotals, a, p, bite);
           if (a.species === "bug")
             soil.litter = clamp(soil.litter + removed * 0.008, 0, 1);
           ate = bite > 0;
@@ -321,7 +311,7 @@ export function stepApproximateAnimals(
           ate = true;
         }
       }
-      if (!ate && eatsPlants(a) && soil.fungus > 0.025 && water < 0.15) {
+      if (!ate && a.species === "bug" && soil.fungus > 0.025 && water < 0.15) {
         const bite = Math.min(soil.fungus, dt * FUNGI.mushroom.biteRate);
         soil.fungus -= bite;
         ingest(w.foodTotals, a, "mushrooms", bite * FUNGI.mushroom.nutrition);
@@ -332,7 +322,14 @@ export function stepApproximateAnimals(
         a.state = "Eating mushrooms";
       }
     }
-    a.energy = Math.min(140, a.energy);
+    a.energy = Math.min(ANIMAL_ENERGY_CAPACITY, a.energy);
+    if (drive) {
+      a.state = drive.state;
+      if (Math.hypot(drive.animal.x - a.x, drive.animal.z - a.z) <= 0.55) {
+        if (drive.state === "Spreading infection") spreadInfection(a, drive.animal, dt);
+        speed = 0;
+      }
+    }
     // Sample a local migration direction; no teleporting between habitat cells.
     if (speed > 0) {
       let angle = a.angle + w.range(-0.8, 0.8);
@@ -340,6 +337,8 @@ export function stepApproximateAnimals(
         const drink = riverDrinkPoint(a.x, a.z, w.ponds);
         angle = Math.atan2(drink.z - a.z, drink.x - a.x);
         a.state = "Seeking water";
+      } else if (drive) {
+        angle = Math.atan2(drive.animal.z - a.z, drive.animal.x - a.x);
       } else if (
         w.naturalReproduction &&
         a.reproductive?.target &&
@@ -392,14 +391,18 @@ export function stepApproximateAnimals(
       a.hydration > 55 &&
       a.cooldown <= 0 &&
       canReproduce(a) &&
+      hasBreedingHealth(a) &&
       !a.nursery &&
       !broods.has(a.id) &&
       water < 0.25
     ) {
+      if (a.species === "bug" && !w.layClutch(a)) {
+        a.cooldown = 2;
+        continue;
+      }
       a.energy -= 32;
-      a.cooldown = 40;
-      if (a.species === "bug") w.layClutch(a);
-      else {
+      a.cooldown = a.species === "mouse" ? MOUSE_BIRTH_RECOVERY : 40;
+      if (a.species !== "bug") {
         w.addAnimal(a.kind, a);
         w.births++;
       }

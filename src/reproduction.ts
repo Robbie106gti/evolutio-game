@@ -1,4 +1,5 @@
-import { canReproduce } from "./biology.ts";
+import { canReproduce, maturityAge } from "./biology.ts";
+import { hasBreedingHealth } from "./animal-disease.ts";
 import type { Animal, Genes, Species } from "./model.ts";
 import { treeRestSite } from "./resting.ts";
 import { isFlyingInsect, isInsect, SPECIES } from "./species.ts";
@@ -28,13 +29,37 @@ export function reproductiveSex(a: Pick<Animal, "id" | "sex">) {
   return a.sex ?? (Math.imul(a.id, 0x9e3779b1) >>> 31 ? "female" : "male");
 }
 
-// Egg production costs the female 32 energy; the male contributes 6.
+export function storesPaternity(species: Species) {
+  return species === "ant" || isFlyingInsect(species);
+}
+
+export function mosquitoHasFed(a: Animal) {
+  return a.mosquitoFed || a.nextBloodMealAge !== undefined || a.reproductive?.previousMate !== undefined;
+}
+
+export const MOUSE_BIRTH_RECOVERY = 50;
+export const youngAdultSpider = (a: Animal) =>
+  a.species === "spider" && a.age >= maturityAge(a) && a.age < maturityAge(a) + 20;
+
+function broodInstallment(a: Animal) {
+  const { species } = a;
+  if (isFlyingInsect(species) || species === "ant" || species === "fish") return 7;
+  return youngAdultSpider(a) ? 8 : 16;
+}
+
+// Courtship reserves include the energy paid at mating and delivery.
 export const courtshipEnergy = (a: Animal) =>
   isFlyingInsect(a.species) ? (reproductiveSex(a) === "female" ? 30 : 18)
     : a.species === "ant" ? (reproductiveSex(a) === "female" ? 30 : 18)
     : isInsect(a.species) ? (reproductiveSex(a) === "female" ? 58 : 24)
-    : a.species === "spider" ? (reproductiveSex(a) === "female" ? 60 : 42)
-    : a.species === "scorpion" ? (reproductiveSex(a) === "female" ? 60 : 42) : 76;
+    : a.species === "spider" ? (youngAdultSpider(a)
+      ? (reproductiveSex(a) === "female" ? 42 : 32)
+      : (reproductiveSex(a) === "female" ? 60 : 42))
+    : a.species === "scorpion" ? (reproductiveSex(a) === "female" ? 60 : 42)
+    : a.species === "fish" ? (reproductiveSex(a) === "female" ? 60 : 48)
+    : a.species === "frog" ? (reproductiveSex(a) === "female" ? 68 : 54)
+    : a.species === "crab" ? (reproductiveSex(a) === "female" ? 56 : 44)
+    : 76;
 
 export function mixGenes(
   first: Genes,
@@ -135,7 +160,10 @@ export function stepReproduction(
   const report = (event: string) => world.events.unshift(event);
   for (const a of pending) {
     const state = a.reproductive!;
-    if (state.due! > now || !safe(a) || a.energy < (isFlyingInsect(a.species) || a.species === "ant" ? 14 : 32)) continue;
+    const layingReserve = isFlyingInsect(a.species) || a.species === "ant" ? 14 :
+      youngAdultSpider(a) ? 24 : 32;
+    if (state.due! > now || !safe(a) || a.energy < layingReserve) continue;
+    if (a.species === "mosquito" && !mosquitoHasFed(a)) continue;
     // Birds return to their chosen nest before laying; keep gestation pending.
     if (a.species === "bird" && a.roost) {
       const tree = world.plants.find((p) => p.id === a.roost && p.health > 0);
@@ -149,12 +177,18 @@ export function stepReproduction(
       }
     }
     const mate = parents?.get(state.mate!);
+    const eggs = usesMate(a.species) && modes[a.species] === "eggs";
+    if (mate && eggs && !world.layClutch(a,
+      // Smaller fish broods spread recruitment over more spawning cycles.
+      a.species === "fish" ? 3 :
+        a.species === "ant" && a.energy < 45 ? Math.ceil(SPECIES.ant.clutchSize / 2) : Infinity,
+      { mate },
+    )) continue;
     delete state.mate;
     delete state.due;
     if (!mate) continue;
-    if (usesMate(a.species) && modes[a.species] === "eggs") {
-      world.layClutch(a, a.species === "ant" && a.energy < 45 ? Math.ceil(SPECIES.ant.clutchSize / 2) : Infinity, { mate });
-      if (a.species === "ant" || a.species === "fly") state.previousMate = mate.id;
+    if (eggs) {
+      if (storesPaternity(a.species)) state.previousMate = mate.id;
       report(
         `${a.species[0].toUpperCase()}${a.species.slice(1)} #${a.id} laid eggs with parent #${mate.id}`,
       );
@@ -169,12 +203,13 @@ export function stepReproduction(
       );
     }
     // Pay the remaining reproductive investment only when young are delivered.
-    a.energy -= isFlyingInsect(a.species) || a.species === "ant" ? 7 : 16;
-    a.cooldown = isFlyingInsect(a.species) ? 12 : isInsect(a.species) ? 24 : a.species === "mouse" ? 40 : 60;
+    a.energy -= broodInstallment(a);
+    a.cooldown = isFlyingInsect(a.species) ? 12 : isInsect(a.species) ? 24 : a.species === "mouse" ? MOUSE_BIRTH_RECOVERY : 60;
   }
 
   const receptive = (a: Animal) =>
     safe(a) &&
+    hasBreedingHealth(a) &&
     a.energy >= courtshipEnergy(a) &&
     a.cooldown <= 0 &&
     !a.nursery &&
@@ -189,14 +224,14 @@ export function stepReproduction(
       continue;
     // A previously inseminated female can provision another brood once
     // her reserves recover. Use the actual father's inherited traits.
-    if (ready && a.reproductive?.previousMate && (a.species === "fly" || a.species === "ant")) {
+    if (ready && a.reproductive?.previousMate && storesPaternity(a.species)) {
       const id = a.reproductive.previousMate;
       const father = world.animals.find(b => b.id === id) ?? world.deceased.find(b => b.id === id);
       if (father?.species === a.species) {
         a.reproductive.mate = id;
         // A returning fly can oviposit at its feeding substrate.
         const onFood = a.state === "Eating remains" || a.state === "Eating";
-        a.reproductive.due = now + (a.species === "fly" && onFood ? 0.5 : 4);
+        a.reproductive.due = now + (a.species === "mosquito" || (a.species === "fly" && onFood) ? 0.5 : 4);
         a.energy -= 7;
         continue;
       }
@@ -207,6 +242,15 @@ export function stepReproduction(
           return mate ? [mate] : [];
         })
       : nearbyMates(grid!, a);
+    if (a.species === "mouse") {
+      // Adult mice compete for a small breeding area. Healthy mice can still
+      // breed in dense patches, but crowded females need better food reserves.
+      let nearbyAdults = 0;
+      for (const mate of near)
+        if ((mate.x - a.x) ** 2 + (mate.z - a.z) ** 2 <= 64) nearbyAdults++;
+      const extraEnergy = Math.min(44, Math.max(0, nearbyAdults - 3) * 3);
+      if (a.energy < courtshipEnergy(a) + extraEnergy) continue;
+    }
     const males = near.filter((b) => reproductiveSex(b) === "male");
     if (a.species === "fish" && depthAt(a.x, a.z) < 0.2) {
       if (a.reproductive) {
@@ -297,14 +341,17 @@ export function stepReproduction(
     }
     (closest.reproductive ??= {}).target = a.id;
     if (distance(a, closest) > 2) {
-      if (isInsect(a.species) || a.species === "scorpion") (a.reproductive ??= {}).target = closest.id;
+      if (isInsect(a.species) || a.species === "scorpion" || a.species === "spider" ||
+          a.species === "fish" || a.species === "frog" || a.species === "crab" || a.species === "cat" || a.species === "fox")
+        (a.reproductive ??= {}).target = closest.id;
       continue;
     }
     const state = (a.reproductive ??= {});
     state.mate = closest.id;
     state.due =
-      now + (isInsect(a.species) ? 4 : a.species === "mouse" ? 9 : 14);
-    a.energy -= isFlyingInsect(a.species) || a.species === "ant" ? 7 : 16;
+      now + (a.species === "mosquito" ? 0.5 : youngAdultSpider(a) ? 2 :
+        isInsect(a.species) ? 4 : a.species === "mouse" ? 9 : 14);
+    a.energy -= broodInstallment(a);
     closest.energy -= 6;
     closest.cooldown = isFlyingInsect(a.species) ? 6 : 18;
     a.state = closest.state = "Courting";

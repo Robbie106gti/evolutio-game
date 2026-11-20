@@ -1,5 +1,6 @@
 import { recordApproach, recordBugStep } from "./bug-routes.ts";
 import { canHunt, canHuntAt, maturityAge as turtleMaturity } from "./biology.ts";
+import { habitat, waterDepth } from "./ecology.ts";
 import { World, type Species, burstProfile, laysEggs } from "./sim.ts";
 import { landAt, landIndex } from "./terrain.ts";
 import { encodeSave, decodeSave } from "./save.ts";
@@ -45,6 +46,38 @@ for (const species of ["cat", "fox", "wolf"] as const) {
   );
   assert(!laysEggs(species), "Mammalian predators have live young");
 }
+const roaming = setup("wolf");
+Object.assign(roaming.predator, { x: -67, z: 5, angle: Math.PI, age: 60 });
+roaming.world.time = 90;
+roaming.world.weather.cloud = 0;
+roaming.world.step(0.1);
+const roamGoal = roaming.predator.wolfSearch;
+assert(roamGoal && roamGoal.x > -68 && Math.hypot(roamGoal.x, roamGoal.z) < 69,
+  "An empty-handed wolf picks a route away from the island edge");
+const startDistance = roaming.predator.distance;
+for (let i = 0; i < 60; i++) roaming.world.step(0.1);
+assert(roaming.predator.distance - startDistance > 3 && roaming.predator.wolfSearch === roamGoal,
+  "A hungry wolf travels steadily toward its search destination");
+const roamSave = encodeSave({ world: roaming.world, rate: 1, paused: true, selected: 0 });
+assert(JSON.stringify(decodeSave(roamSave).world.animals[0].wolfSearch) === JSON.stringify(roamGoal),
+  "A wolf keeps its route when reloaded");
+
+for (const preySpecies of ["scorpion", "spider", "frog", "turtle"] as const) {
+  const hunt = setup("bird");
+  const predator = hunt.predator;
+  const prey = hunt.world.addAnimal("grazer", undefined, preySpecies);
+  const insectEater = preySpecies === "scorpion" || preySpecies === "spider";
+  Object.assign(predator, { birdDiet: insectEater ? "insectivore" : "raptor", angle: 0, altitude: 0 });
+  predator.genes.size = 1;
+  Object.assign(prey, { x: predator.x + 0.25, z: predator.z, age: 0, energy: 0.5, altitude: 0 });
+  prey.genes.size = 0.7;
+  assert(canHuntAt(predator, prey, () => 0), "The applicable bird type can hunt small " + preySpecies);
+  if (!insectEater)
+    assert(!canHuntAt(predator, prey, () => 0.5), "Deeper water shelters " + preySpecies);
+  hunt.world.step(0.1);
+  assert(prey.killedBy === predator.id && !!hunt.world.foodTotals.bird?.[preySpecies],
+    "The bird can catch and eat a small " + preySpecies);
+}
 const { world, predator } = setup();
 const prey = world.addAnimal("grazer", undefined, "mouse");
 prey.x = -24;
@@ -55,7 +88,7 @@ prey.cooldown = 1000;
 prey.genes.speed = 0.5;
 world.step(0.1);
 assert(predator.state === "Stalking", "Hungry predators stalk distant prey");
-prey.x = predator.x + 1;
+prey.x = predator.x + 2.5;
 prey.z = predator.z;
 world.step(0.1);
 assert(
@@ -63,7 +96,7 @@ assert(
   "Close prey triggers a stamina-consuming burst",
 );
 predator.stamina = 31;
-prey.x = predator.x + 0.7;
+prey.x = predator.x + 2.5;
 prey.z = predator.z;
 world.step(0.1);
 assert(predator.restTimer > 0, "Exhaustion starts a recovery interval");
@@ -97,6 +130,41 @@ missed.world.step(0.1);
 assert((missed.predator.nextStingAge ?? 0) > missed.predator.age &&
   escaping.energy > 39 && !escaping.stungUntilAge && !escaping.killedBy,
   "A missed sting leaves the ant mobile while the scorpion recovers");
+const nurseryEdge = new World(52);
+nurseryEdge.animals = [];
+nurseryEdge.plants = [];
+const shelter = nurseryEdge.addPlant(undefined, -30, 25, "bush")!;
+const founder = nurseryEdge.addAnimal("hunter", undefined, "scorpion");
+assert(Math.hypot(founder.x - shelter.x, founder.z - shelter.z) < 1 &&
+  habitat(founder, [shelter], nurseryEdge.weather.land).cover >= 0.15 &&
+  waterDepth(nurseryEdge.ponds, founder.x, founder.z, nurseryEdge.weather.land) < 0.1,
+  "Scorpion founders prefer covered feeding sites on dry ground");
+const spiderShelter = nurseryEdge.addPlant(undefined, -36, 25, "bush")!;
+const spiderFounder = nurseryEdge.addAnimal("hunter", undefined, "spider");
+assert(Math.hypot(spiderFounder.x - spiderShelter.x, spiderFounder.z - spiderShelter.z) < 1 &&
+  habitat(spiderFounder, [spiderShelter], nurseryEdge.weather.land).cover >= 0.15 &&
+  Math.hypot(spiderFounder.x - founder.x, spiderFounder.z - founder.z) >= 2.5,
+  "Spider founders choose cover outside a nearby predator's strike range");
+const laterScorpion = nurseryEdge.addAnimal("hunter", undefined, "scorpion");
+assert(Math.hypot(laterScorpion.x - spiderFounder.x, laterScorpion.z - spiderFounder.z) >= 2.5,
+  "Scorpions introduced later also leave space around spider founders");
+
+const scoutingYoung = setup("scorpion");
+const juvenile = scoutingYoung.predator;
+const emptyHide = scoutingYoung.world;
+emptyHide.time = 90;
+emptyHide.weather.cloud = 0;
+emptyHide.addPlant(undefined, juvenile.x + 0.3, juvenile.z, "bush");
+for (const cell of emptyHide.weather.land!) cell.worms = 0;
+Object.assign(juvenile, { age: 10, energy: 24, lastPreyAt: 89 });
+emptyHide.step(0.1);
+assert(juvenile.state === "Waiting in ambush", "A young scorpion gives a sheltered site time to produce prey");
+juvenile.lastPreyAt = 86.95;
+const beforeScout = { x: juvenile.x, z: juvenile.z };
+emptyHide.step(0.1);
+assert(String(juvenile.state) === "Searching for prey" &&
+  Math.hypot(juvenile.x - beforeScout.x, juvenile.z - beforeScout.z) > 0,
+  "A hungry young scorpion leaves cover just after three seconds without a catch");
 for (const species of ["scorpion", "spider"] as const) {
   const encounter = setup(species);
   const insect = encounter.world.addAnimal("grazer", undefined, "mosquito");
@@ -114,6 +182,45 @@ for (const species of ["scorpion", "spider"] as const) {
   assert(species === "spider" ? insect.webOwnerId === encounter.predator.id :
     !!encounter.predator.nextStingAge, "A low hover triggers a web catch or sting attempt");
 }
+const frogHunt = setup("scorpion");
+const bankFrog = frogHunt.world.addAnimal("hunter", undefined, "frog");
+Object.assign(bankFrog, { x: frogHunt.predator.x + 0.3, z: frogHunt.predator.z, age: 40, energy: 85, altitude: 0 });
+Object.assign(frogHunt.predator, { age: 70, angle: 0 });
+frogHunt.predator.genes.size = bankFrog.genes.size = 1;
+assert(canHuntAt(frogHunt.predator, bankFrog, () => 0.1), "Scorpions can hunt a somewhat larger frog on a bank");
+assert(!canHuntAt(frogHunt.predator, bankFrog, () => 0.3), "Deeper water protects frogs from scorpions");
+frogHunt.world.random = () => 0;
+frogHunt.world.step(0.1);
+assert(bankFrog.energy > 0 && bankFrog.energy < 60 && !!bankFrog.stungUntilAge,
+  "A sting injures and slows a larger frog, leaving a chance to escape");
+Object.assign(bankFrog, { x: frogHunt.predator.x + 0.2, z: frogHunt.predator.z, energy: 24 });
+Object.assign(frogHunt.predator, { nextStingAge: 0, nextSenseAt: 0, angle: 0 });
+for (let i = 0; i < 12 && !frogHunt.world.foodTotals.scorpion?.frog; i++)
+  frogHunt.world.step(0.1);
+assert(bankFrog.killedBy === frogHunt.predator.id && !!frogHunt.world.foodTotals.scorpion?.frog,
+  "A scorpion can finish the catch and feed on a frog");
+const silkHunter = setup("spider").predator;
+silkHunter.genes.size = 1;
+const smallMouse = frogHunt.world.addAnimal("grazer", undefined, "mouse");
+Object.assign(smallMouse, { age: turtleMaturity(smallMouse), altitude: 0 });
+smallMouse.genes.size = 0.67;
+assert(canHunt(silkHunter, smallMouse), "A spider can tackle prey a little larger than itself");
+smallMouse.genes.size = 1;
+assert(!canHunt(silkHunter, smallMouse), "Much larger mice are still out of reach");
+
+const snakeHunt = setup("snake");
+const edgeFrog = snakeHunt.world.addAnimal("hunter", undefined, "frog");
+Object.assign(edgeFrog, { x: snakeHunt.predator.x + 0.3, z: snakeHunt.predator.z, age: 30, energy: 1, altitude: 0 });
+snakeHunt.predator.genes.size = edgeFrog.genes.size = 1;
+assert(canHuntAt(snakeHunt.predator, edgeFrog, () => 0.2), "Snakes can hunt frogs at the water's edge");
+assert(!canHuntAt(snakeHunt.predator, edgeFrog, () => 0.4), "Snakes cannot hunt frogs in deeper water");
+snakeHunt.world.time = 70;
+snakeHunt.world.weather.cloud = 0;
+Object.assign(snakeHunt.predator, { angle: 0, bodyTemperature: 27, energy: 35 });
+for (let i = 0; i < 12 && !snakeHunt.world.foodTotals.snake?.frog; i++) snakeHunt.world.step(0.1);
+assert(edgeFrog.killedBy === snakeHunt.predator.id && !!snakeHunt.world.foodTotals.snake?.frog,
+  "A snake catches a small frog and feeds");
+
 for (const insect of ["fly", "mosquito"] as const) {
   const {world, predator} = setup("bird");
   Object.assign(predator, { birdDiet: "insectivore", altitude: 1 });
@@ -165,6 +272,35 @@ assert(
   hunt.predator.state === "Feeding on catch",
   "Feeding is visible in the animal state",
 );
+for (const species of ["fox", "cat", "snake", "bird"] as const) {
+  const encounter = setup(species);
+  const hunter = encounter.predator;
+  hunter.age = 100;
+  if (species === "snake") {
+    hunter.bodyTemperature = 30;
+    hunter.energy = 30;
+  }
+  if (species === "bird") {
+    hunter.birdDiet = "raptor";
+    hunter.altitude = 3;
+  }
+  hunter.genes.size = 1.3;
+  const mouse = encounter.world.addAnimal("grazer", undefined, "mouse");
+  const distance = species === "bird" ? 3 : species === "snake" ? 2.1 : 0.7;
+  Object.assign(mouse, { x: hunter.x + distance, z: hunter.z, age: 30, energy: 100 });
+  mouse.genes.size = 1;
+  encounter.world.step(0.1);
+  if (species === "snake" || species === "bird") {
+    const attack = species === "snake" ? "Striking at mouse" : "Diving for mouse";
+    assert(hunter.state === attack && !mouse.killedBy, `${species} starts ${attack} outside contact range`);
+    for (let i = 0; i < 15 && !mouse.killedBy; i++) encounter.world.step(0.1);
+  }
+  assert(mouse.killedBy === hunter.id, `${species} can finish a close catch on a healthy adult mouse (${hunter.state}, ${Math.hypot(hunter.x - mouse.x, hunter.z - mouse.z).toFixed(2)} units away)`);
+  assert(
+    species === "fox" || species === "cat" ? hunter.mealEnergy > 0 : (encounter.world.foodTotals[species]?.mouse ?? 0) > 0,
+    `${species} gets food from the mouse it catches`,
+  );
+}
 const saved = encodeSave({
   world: hunt.world,
   paused: true,
@@ -399,6 +535,7 @@ for (const sex of ["female", "male"] as const) {
   world.step(0.1);
   assert(!!world.foodTotals.mosquito?.blood === (sex === "female"),
     "Only female mosquitoes take a blood meal");
+  assert(!!mosquito.mosquitoFed === (sex === "female"), "A successful meal enables later egg-laying");
   assert(host.energy > 70, "A blood meal leaves the host alive");
 }
 
@@ -410,6 +547,18 @@ Object.assign(refuge, { x: nestWorker.x, z: nestWorker.z, progress: 1 });
 entrance.world.step(0.1);
 assert(!entrance.predator.nextStingAge && !nestWorker.killedBy,
   "Scorpion cannot sting an ant under its own completed hill");
+
+const frogRaid = setup("frog");
+const protectedAnt = frogRaid.world.addAnimal("grazer", undefined, "ant");
+Object.assign(protectedAnt, { x: frogRaid.predator.x + 0.3, z: frogRaid.predator.z, age: 25, energy: 2 });
+const antHill = frogRaid.world.dens.find(d => d.id === protectedAnt.home)!;
+Object.assign(antHill, { x: protectedAnt.x, z: protectedAnt.z, progress: 1 });
+frogRaid.world.step(0.1);
+assert(!protectedAnt.killedBy && !frogRaid.world.foodTotals.frog?.ant, "A completed hill also shelters ants from frogs");
+antHill.progress = 0;
+frogRaid.predator.nextSenseAt = 0;
+frogRaid.world.step(0.1);
+assert(!!protectedAnt.killedBy || !!frogRaid.world.foodTotals.frog?.ant, "An incomplete nest does not protect exposed ants");
 
 for (const species of ["cat", "fox", "wolf"] as const) {
   const { world, predator } = setup(species);

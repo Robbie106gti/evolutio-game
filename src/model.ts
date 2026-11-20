@@ -125,7 +125,9 @@ export interface Animal {
   web?: { x: number; z: number; expires: number; prey: number };
   natalDispersal?: boolean;
   nextBloodMealAge?: number;
+  mosquitoFed?: boolean;
   lastPreyAt?: number;
+  wolfSearch?: { x: number; z: number; until: number };
   webScout?: { x: number; z: number; until: number; silk?: boolean; natal?: boolean };
   webHeldUntilAge?: number;
   webOwnerId?: number;
@@ -165,6 +167,8 @@ export interface Animal {
 
 export interface Plant {
   deposit?: { time: number; owner?: number };
+  seedFood?: number;
+  liquidFood?: number;
   reserves: number;
   depletion: number;
   stripped?: boolean;

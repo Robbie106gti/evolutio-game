@@ -91,14 +91,13 @@ export function applyIslandTool(
         kind,
         variety,
       );
-      if (p) {
-        p.variety = variety;
-        added++;
-      }
+      if (p) added++;
     }
     return added
       ? `Planted ${added}. Keep clicking to grow a patch.`
-      : "No planting space here. Try dry ground within the island.";
+      : kind === "bush" && variety === 2
+        ? "Try dry ground in the desert or along a sandy grassland edge."
+        : "No planting space here. Try dry ground within the island.";
   }
   return tool === "water"
     ? "Added water flows downhill; low ground collects it. Nearby lake levels changed."

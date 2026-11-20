@@ -7,17 +7,26 @@ export function disperseSeed(
   seed: Pick<Plant, "x" | "z" | "spread">,
   random: () => number,
   suitable: (x: number, z: number) => boolean,
+  score?: (x: number, z: number) => number,
 ) {
+  let best: { x: number; z: number } | undefined;
+  let bestScore = Infinity;
   for (let attempt = 0; attempt < 12; attempt++) {
     const angle = random() * Math.PI * 2;
     const reach = Math.max(2, seed.spread) * (attempt < 8 ? 1 : 6);
     const radius = Math.sqrt(random()) * reach;
     const x = seed.x + Math.cos(angle) * radius;
     const z = seed.z + Math.sin(angle) * radius;
-    if (suitable(x, z)) return { x, z };
+    if (!suitable(x, z)) continue;
+    if (!score) return { x, z };
+    const value = score(x, z) + radius * 0.025;
+    if (value < bestScore) {
+      best = { x, z };
+      bestScore = value;
+    }
   }
   // Dormancy is retained if no destination is viable; no free replacement plant.
-  return undefined;
+  return best;
 }
 
 // A bounded archive must not erase slow-growing plant types simply because
@@ -43,7 +52,8 @@ export function storeDormantSeed(bank: Plant[], plant: Plant) {
     if (index < 0) return false;
     bank.splice(index, 1);
   }
-  bank.push({ ...plant, expression: { ...plant.expression } });
+  const { seedFood, liquidFood, ...seed } = plant;
+  bank.push({ ...seed, expression: { ...plant.expression } });
   return true;
 }
 

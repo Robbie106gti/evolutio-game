@@ -33,6 +33,8 @@ predator.genes.eyesight = 0.5;
 const poor = detectionRange(predator, prey, grass, 1);
 predator.genes.eyesight = 2.2;
 const sharp = detectionRange(predator, prey, grass, 1);
+assert(detectionRange(predator, { ...prey, infection: 1 }, grass, 1) >= sharp * 1.59,
+  "Severely ill prey are visible to hunters at a greater distance");
 assert(
   sharp > poor && eyesightCost(2.2) > eyesightCost(0.5),
   "Better vision spots prey farther away and costs more",

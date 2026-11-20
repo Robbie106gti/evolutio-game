@@ -15,12 +15,19 @@ export const canHunt = (predator: Animal, prey: Animal) => {
   if (prey.species === "spider" && (predator.species === "frog" ||
       (predator.species === "bird" && predator.birdDiet === "insectivore")))
     return grownBodySize(prey) <= grownBodySize(predator) * 0.75;
+  if (predator.species === "bird" && prey.species === "scorpion")
+    return predator.birdDiet === "insectivore" && grownBodySize(prey) <= grownBodySize(predator) * 0.65;
   const smallVertebrate = prey.species === "mouse" || prey.species === "bird";
-  if ((predator.species === "spider" && smallVertebrate) ||
-      (predator.species === "scorpion" && (smallVertebrate || prey.species === "frog" || prey.species === "snake" || prey.species === "crab")))
-    return grownBodySize(prey) <= grownBodySize(predator) * 0.85;
+  if (predator.species === "spider" && smallVertebrate)
+    return grownBodySize(prey) <= grownBodySize(predator) * 1.2;
+  if (predator.species === "scorpion" &&
+      (smallVertebrate || prey.species === "frog" || prey.species === "snake" || prey.species === "crab"))
+    return grownBodySize(prey) <= grownBodySize(predator) * 1.3;
+  if (predator.species === "snake" && prey.species === "frog")
+    return grownBodySize(prey) <= grownBodySize(predator);
   if (prey.species === "turtle") {
     if (!SPECIES[predator.species].prey.includes("turtle")) return false;
+    if (predator.species === "bird" && predator.birdDiet !== "raptor") return false;
     const stage = lifeStage(prey);
     const vulnerable = stage === "Baby" || (stage === "Juvenile" && predator.species !== "cat");
     return vulnerable && grownBodySize(prey) <= grownBodySize(predator) * 0.65;
@@ -47,7 +54,8 @@ export const canHunt = (predator: Animal, prey: Animal) => {
   }
   if (predator.species === "bird")
     return predator.birdDiet === "raptor"
-      ? prey.species === "mouse" || prey.species === "fish"
+      ? prey.species === "mouse" || prey.species === "fish" ||
+        (prey.species === "frog" && grownBodySize(prey) <= grownBodySize(predator))
       : isInsect(prey.species) || prey.species === "spider";
   return SPECIES[predator.species].prey.includes(prey.species);
 };
@@ -56,6 +64,8 @@ export function canHuntAt(predator: Animal, prey: Animal, depthAt: (x: number, z
   if (!canHunt(predator, prey)) return false;
   if (prey.species === "turtle") return depthAt(prey.x, prey.z) <= 0.2;
   if (predator.species === "scorpion" && depthAt(prey.x, prey.z) > 0.15) return false;
+  if (predator.species === "snake" && prey.species === "frog") return depthAt(prey.x, prey.z) <= 0.25;
+  if (predator.species === "bird" && prey.species === "frog") return depthAt(prey.x, prey.z) <= 0.3;
   if (prey.species === "crocodile")
     return depthAt(prey.x, prey.z) <= (predator.species === "bird" ? 0.4 : 0.2);
   if (predator.species !== "crocodile") return true;

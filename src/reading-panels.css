@@ -61,6 +61,30 @@ aside .stats small {
   outline-offset: 2px;
   border-radius: 4px;
 }
+.egg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.egg-table caption,
+.egg-note {
+  text-align: start;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.egg-table caption {
+  margin-bottom: 8px;
+}
+.egg-table th,
+.egg-table td {
+  padding: 5px 2px;
+  border-bottom: 1px solid #dce3d5;
+  text-align: end;
+}
+.egg-table th:first-child {
+  text-align: start;
+}
 aside h3 {
   font-size: 13px;
   margin: 16px 0 10px;

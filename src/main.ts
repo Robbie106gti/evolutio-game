@@ -1,7 +1,10 @@
+import { energyPercent } from "./food-energy.ts";
+import { RECOVERY } from "./plant-recovery.ts";
 import { waterDepth as gaitWaterDepth } from "./ecology.ts";
 import { lineageIdentity, lineageBadge } from "./lineage-identity.ts";
 import { LineageOverlay } from "./lineage-overlay.ts";
 import { recordEvolution } from "./evolution-history.ts";
+import { eggSummary } from "./egg-summary.ts";
 import { evolutionJournal, type EvolutionView } from "./evolution-view.ts";
 import "./evolution.css";
 import {
@@ -22,6 +25,8 @@ import {
 } from "./browser-storage.ts";
 import {
   introduceAnimals,
+  introduceMissingSpecies,
+  missingFounderGroups,
   establishedOmnivores,
 } from "./animal-introduction.ts";
 import { GenerationAdvance } from "./generation-advance.ts";
@@ -543,7 +548,34 @@ renderer.domElement.addEventListener("pointerup", (e) => {
 function trait(label: string, value: number, max: number, text: string) {
   return `<div class="trait"><div><span>${label}</span><b>${text}</b></div><div class="track"><i style="width:${Math.min(100, (value / max) * 100)}%"></i></div></div>`;
 }
+function updateEggJournal() {
+  if (!($("egg-journal") as HTMLDetailsElement).open) return;
+  const rows = eggSummary(world);
+  const body = $("egg-rows");
+  const html = rows.map(({ species, laid, developing, waiting }) =>
+    `<tr><th scope="row">${SPECIES[species].label}</th><td>${laid.toLocaleString()}</td><td>${developing.toLocaleString()}</td><td>${waiting.toLocaleString()}</td></tr>`,
+  ).join("");
+  if (body.innerHTML !== html) body.innerHTML = html;
+}
+
+$("egg-journal").addEventListener("toggle", updateEggJournal);
+
+function updateTreeBrowseJournal() {
+  if (!($("tree-browse-journal") as HTMLDetailsElement).open) return;
+  const body = $("tree-browse-rows");
+  const html = (Object.entries(world.treeBrowseDamage) as [Species, number][])
+    .sort((a, b) => b[1] - a[1])
+    .map(([species, damage]) =>
+      `<tr><th scope="row">${SPECIES[species].label}</th><td>${damage.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td></tr>`)
+    .join("") || '<tr><td colspan="2">No tree browsing recorded yet.</td></tr>';
+  if (body.innerHTML !== html) body.innerHTML = html;
+}
+
+$("tree-browse-journal").addEventListener("toggle", updateTreeBrowseJournal);
+
 function updateUI() {
+  updateEggJournal();
+  updateTreeBrowseJournal();
   // Saved simulation age keeps welcome copy out of established islands.
   document.querySelector("main")!.classList.toggle("settled", world.time >= 90);
   if (advanceWorker) return;
@@ -618,7 +650,7 @@ function updateUI() {
     })
     .join(" · ");
   $("weather-panel").innerHTML =
-    `<div><b>${weather.period} · ${weather.temperature.toFixed(0)}°C</b><span>Regional weather</span></div><p>Day ${1 + Math.floor(world.time / DAY_LENGTH)} · Soil moisture ${Math.round(world.weather.moisture * 100)}% · Clouds ${Math.round(world.weather.cloud * 100)}%</p><p>${paused ? "Paused" : `Running ${measuredSpeed.toFixed(1)}× / requested ${rate}× · 30 fps render limit`}</p><p>Freshwater ${Math.round((world.ponds.reduce((s, p) => s + p.water, 0) / 3) * 100)}% · ${world.dens.filter((d) => d.progress >= 1).length} dens ready / ${world.dens.length} started</p><p>${regionalSummary}</p><p>River flow ${riverFlow(world.ponds).toFixed(1)}× · Lake outlets ${world.ponds.filter((p) => p.flow > 0.04).length}/3 · Eggs laid ${world.eggsLaid.toLocaleString()} · Developing eggs ${world.eggs.length} · Births ${world.births} · Egg losses ${world.eggsLost} · Dormant seeds ${world.seedBank.length} · Plant losses: drought ${world.plantDeaths.drought} · flooding ${world.plantDeaths.flooding} · disease ${world.plantDeaths.disease} · competition ${world.plantDeaths.competition} · depletion ${world.plantDeaths.depletion}</p><p>Stored plant food ${Math.round(plantFood).toLocaleString()} / ${Math.round(plantCapacity).toLocaleString()} energy · Depleted plants ${depletedPlants} / ${world.plants.length}</p><small>Ground colour tracks changing habitats. Mushrooms mark damp decomposition; dense wet patches can spread mould.</small><small>Gold home ring marks your selected animal’s den. Rain refills lakes; high lakes spill into the river. The waterfall and evaporation supply clouds that drift inland.</small>`;
+    `<div><b>${weather.period} · ${weather.temperature.toFixed(0)}°C</b><span>Regional weather</span></div><p>Day ${1 + Math.floor(world.time / DAY_LENGTH)} · Soil moisture ${Math.round(world.weather.moisture * 100)}% · Clouds ${Math.round(world.weather.cloud * 100)}%</p><p>${paused ? "Paused" : `Running ${measuredSpeed.toFixed(1)}× / requested ${rate}× · 30 fps render limit`}</p><p>Freshwater ${Math.round((world.ponds.reduce((s, p) => s + p.water, 0) / 3) * 100)}% · ${world.dens.filter((d) => d.progress >= 1).length} dens ready / ${world.dens.length} started</p><p>${regionalSummary}</p><p>River flow ${riverFlow(world.ponds).toFixed(1)}× · Lake outlets ${world.ponds.filter((p) => p.flow > 0.04).length}/3 · Eggs laid ${world.eggsLaid.toLocaleString()} · Unhatched eggs ${world.eggs.length} · Births ${world.births} · Egg losses ${world.eggsLost} · Dormant seeds ${world.seedBank.length} · Plant losses: drought ${world.plantDeaths.drought} · flooding ${world.plantDeaths.flooding} · disease ${world.plantDeaths.disease} · competition ${world.plantDeaths.competition} · depletion ${world.plantDeaths.depletion}</p><p>Stored plant food ${energyPercent(plantFood, plantCapacity)}% · Depleted plants ${depletedPlants} / ${world.plants.length}</p><small>Ground colour tracks changing habitats. Mushrooms mark damp decomposition; dense wet patches can spread mould.</small><small>Gold home ring marks your selected animal’s den. Rain refills lakes; high lakes spill into the river. The waterfall and evaporation supply clouds that drift inland.</small>`;
 
   const family = selectedFamily(world, selected),
     watch = $("family-watch");
@@ -706,13 +738,7 @@ function updateUI() {
     })
     .join("");
   ($("introduce") as HTMLButtonElement).disabled =
-    world.level.availableSpecies.every((s) =>
-      world.animals.some((a) => a.species === s),
-    ) &&
-    (!world.level.availableSpecies.includes("bird") ||
-      ["raptor", "insectivore"].every((role) =>
-        world.animals.some((a) => a.species === "bird" && a.birdDiet === role),
-      ));
+    missingFounderGroups(world).length === 0;
   const branches = new Map<
     number,
     { id: number; label: string; count: number }
@@ -747,7 +773,9 @@ function updateUI() {
   const notes =
     world.animals.length === 0
       ? [
-          "The animal population has died out. Family and cause-of-death records remain available.",
+          world.eggs.length
+            ? `No animals are active. ${world.eggs.length} unhatched ${world.eggs.length === 1 ? "egg remains" : "eggs remain"}, and some may hatch when conditions improve.`
+            : "The animal population has died out. Family and cause-of-death records remain available.",
         ]
       : world.events.length
         ? world.events.slice(0, 2)
@@ -814,7 +842,7 @@ function updateUI() {
       panel.innerHTML =
         '<button class="close" id="close-inspect" aria-label="Close inspection">×</button>' +
         (p
-          ? `<div class="eyebrow">${PLANTS[p.kind].label.toUpperCase()} #${p.id} · GENERATION ${p.generation}</div><h3>${PLANT_VARIETIES[p.kind][p.variety]} lineage</h3><p>Energy ${p.energy.toFixed(0)} · Age ${Math.floor(p.age)} · Health ${p.health.toFixed(0)}% · Infection ${(p.infection * 100).toFixed(0)}%</p><p>Sunlight, water and soil nutrients support growth. Grazing removes edible foliage. Stored reserves can help regrowth, but prolonged depletion can kill this plant.</p><p>Stored reserves ${p.reserves.toFixed(1)} · Depletion stress ${p.depletion.toFixed(0)}s · ${p.depletion > 0 ? "Recovering from depletion; prolonged stress risks death" : "Not depleted"}</p><p>Drought tolerance ${p.droughtTolerance.toFixed(2)} · Flood tolerance ${p.floodTolerance.toFixed(2)} · Disease resistance ${p.resistance.toFixed(2)}</p><p><b>Expression memory</b><br>Drought: ${Math.round(p.expression.droughtTolerance * 100)}% active · ${Math.round(p.expression.droughtTolerance * 60)}% exact-copy chance<br>Flooding: ${Math.round(p.expression.floodTolerance * 100)}% active · ${Math.round(p.expression.floodTolerance * 60)}% exact-copy chance</p><p>Seeds retain activated tolerance values more often, with 35% inherited memory. Memory fades without exposure; tolerance is not automatically increased.</p>${trait("Growth", p.growth, 1.7, p.growth.toFixed(2))}${trait("Defence", p.defense, 0.8, p.defense.toFixed(2))}${trait("Seed spread", p.spread, 6, p.spread.toFixed(1) + "m")}<p>Parent ${p.parent ? "#" + p.parent : "founder"} · Seeds inherit this species and mutate its traits.</p>`
+          ? `<div class="eyebrow">${PLANTS[p.kind].label.toUpperCase()} #${p.id} · GENERATION ${p.generation}</div><h3>${PLANT_VARIETIES[p.kind][p.variety]} lineage</h3><p>Energy ${energyPercent(p.energy, PLANTS[p.kind].capacity)}% · Age ${Math.floor(p.age)} · Health ${p.health.toFixed(0)}% · Infection ${(p.infection * 100).toFixed(0)}%</p><p>Sunlight, water and soil nutrients support growth. Grazing removes edible foliage. Stored reserves can help regrowth, but prolonged depletion can kill this plant.</p><p>Stored reserves ${energyPercent(p.reserves, RECOVERY[p.kind].reserve)}% · Depletion stress ${p.depletion.toFixed(0)}s · ${p.depletion > 0 ? "Recovering from depletion; prolonged stress risks death" : "Not depleted"}</p><p>Drought tolerance ${p.droughtTolerance.toFixed(2)} · Flood tolerance ${p.floodTolerance.toFixed(2)} · Disease resistance ${p.resistance.toFixed(2)}</p><p><b>Expression memory</b><br>Drought: ${Math.round(p.expression.droughtTolerance * 100)}% active · ${Math.round(p.expression.droughtTolerance * 60)}% exact-copy chance<br>Flooding: ${Math.round(p.expression.floodTolerance * 100)}% active · ${Math.round(p.expression.floodTolerance * 60)}% exact-copy chance</p><p>Seeds retain activated tolerance values more often, with 35% inherited memory. Memory fades without exposure; tolerance is not automatically increased.</p>${trait("Growth", p.growth, 1.7, p.growth.toFixed(2))}${trait("Defence", p.defense, 0.8, p.defense.toFixed(2))}${trait("Seed spread", p.spread, 6, p.spread.toFixed(1) + "m")}<p>Parent ${p.parent ? "#" + p.parent : "founder"} · Seeds inherit this species and mutate its traits.</p>`
           : "<h3>A life completed.</h3><p>This organism is gone. Its descendants may still carry its traits.</p>");
       $("close-inspect").onclick = () => {
         selected = 0;
@@ -916,29 +944,23 @@ $("species-list").addEventListener("click", (e) => {
   }
 });
 $("introduce").onclick = () => {
-  let added = 0;
-  for (const species of world.level.availableSpecies) {
-    if (!world.animals.some((a) => a.species === species)) {
-      const count = species === "bug" ? 12 : species === "bird" ? 6 : 4;
-      for (let i = 0; i < count; i++) {
-        world.addAnimal(SPECIES[species].kind, undefined, species);
-        added++;
-      }
-    }
-  }
-  if (world.level.availableSpecies.includes("bird"))
-    for (const role of ["raptor", "insectivore"] as const)
-      if (
-        !world.animals.some((a) => a.species === "bird" && a.birdDiet === role)
-      )
-        for (let i = 0; i < 4; i++) {
-          world.addAnimal("hunter", undefined, "bird").birdDiet = role;
-          added++;
-        }
-  $("wildlife-note").textContent =
-    `Introduced ${added} founders. Their offspring inherit their species, body and brain.`;
+  if (advanceWorker || islandTransition) return;
+  const { added, fishNeedWater } = introduceMissingSpecies(world);
+  const irregular: Partial<Record<Species, string>> = {
+    fish: "fish", fly: "flies", fox: "foxes", mouse: "mice", wolf: "wolves",
+  };
+  const founders = added.map(({ species, count, birdDiet }) => {
+    const label = birdDiet === "raptor" ? "birds of prey"
+      : birdDiet === "insectivore" ? "insect-eating birds"
+        : irregular[species] ?? SPECIES[species].label.toLowerCase() + "s";
+    return `${count} ${label}`;
+  });
+  $("wildlife-note").textContent = [
+    founders.length ? `Introduced ${founders.join(", ")}.` : "",
+    fishNeedWater ? "Fish need deeper water before they can be introduced." : "",
+  ].filter(Boolean).join(" ");
   updateUI();
-  saveIsland();
+  if (added.length) saveIsland();
 };
 $("enable-breeding").onclick = () => {
   if (advanceWorker || islandTransition) return;

@@ -61,7 +61,8 @@ a.age = 40;
 a.genes.sense = 14;
 a.genes.swimming = 0.1;
 a.genes.preferredMoisture = landAt(world.weather.land, a.x, a.z).moisture;
-world.addPlant(undefined, riverX(10) + 4, 10, "grass");
+const food = world.addPlant(undefined, riverX(10) + 4, 10, "grass")!;
+Object.assign(food, { age: 10, seedFood: 3 });
 world.step(0.1);
 assert(
   a.crossingZ !== null &&

@@ -2,7 +2,10 @@ import type { Pond } from "./ecology.ts";
 import { WORLD_RADIUS, type LandCell } from "./terrain.ts";
 
 type Depth = (x: number, z: number) => number;
-type FoodQuery = (x: number, z: number) => Pond | undefined;
+type PondFood = "food" | "algae";
+type FoodQuery = (x: number, z: number, resource?: PondFood) => Pond | undefined;
+const hasFood = (pond: Pond, resource: PondFood) =>
+  (pond[resource] ?? 0) > (resource === "food" ? 0.01 : 0);
 const cache = new WeakMap<LandCell[], FoodQuery>();
 
 // Flood-fill from pond centres on a half-unit grid. Land is replaced at each
@@ -55,7 +58,7 @@ export function pondFoodQuery(
     }
     built = true;
   }
-  const query: FoodQuery = (x, z) => {
+  const query: FoodQuery = (x, z, resource = "food") => {
     if (depth(x, z) <= 0.1) return;
     // Most feeding happens inside the source lake. Verify the short wet
     // segment directly so those meals never need an island connectivity map.
@@ -63,7 +66,7 @@ export function pondFoodQuery(
       for (const pond of ponds) {
         const distance = Math.hypot(x - pond.x, z - pond.z);
         if (
-          pond.food <= 0.01 ||
+          !hasFood(pond, resource) ||
           distance >= pond.radius * Math.sqrt(pond.water) * 1.15
         )
           continue;
@@ -83,7 +86,7 @@ export function pondFoodQuery(
     const nx = Math.round(2 * x),
       nz = Math.round(2 * z);
     if (depth((x + nx / 2) / 2, (z + nz / 2) / 2) <= 0.1) return;
-    return components.get(key(nx, nz))?.find((p) => p.food > 0.01);
+    return components.get(key(nx, nz))?.find((p) => hasFood(p, resource));
   };
   if (land) cache.set(land, query);
   return query;

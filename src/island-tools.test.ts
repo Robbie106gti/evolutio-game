@@ -52,18 +52,20 @@ assert(
   "Mushroom brush creates visible fungal cover",
 );
 applyIslandTool(w, "water", x, z, 8, 1, true);
-applyIslandTool(w, "plants", x, z, 8, 1, false, "bush", 2);
+const cactusX = 34,
+  cactusZ = -25;
+applyIslandTool(w, "plants", cactusX, cactusZ, 8, 1, false, "bush", 2);
 assert(
   w.plants.length > 0 &&
     w.plants.every((p) => p.variety === 2 && p.droughtTolerance >= 0.8),
   "Cactus brush creates drought-tolerant plants",
 );
-applyIslandTool(w, "disease", x, z, 16, 1, false);
+applyIslandTool(w, "disease", cactusX, cactusZ, 16, 1, false);
 assert(
   w.plants.some((p) => p.infection > 0),
   "Disease affects nearby plants",
 );
-applyIslandTool(w, "disease", x, z, 16, 1, true);
+applyIslandTool(w, "disease", cactusX, cactusZ, 16, 1, true);
 assert(
   w.plants.every((p) => p.infection === 0),
   "Remove disease heals nearby infection",
@@ -98,7 +100,7 @@ assert(
   Object.values(PLANT_VARIETIES).every((v) => v.length === 3),
   "Nine plant varieties are available",
 );
-applyIslandTool(w, "plants", x, z, 16, 1, true, "bush", 2);
+applyIslandTool(w, "plants", cactusX, cactusZ, 16, 1, true, "bush", 2);
 assert(w.plants.length === 0, "Remove brush clears the selected plant family");
 console.log(
   "Elevation, water corridors, reversible brushes, desert plants, fungal patches, nine meshes and save migration passed",

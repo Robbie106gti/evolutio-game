@@ -18,6 +18,7 @@ import {
 } from "./levels.ts";
 import { isAnimalState } from "./animal-state.ts";
 import { rhythmDefaults } from "./rhythm.ts";
+import { storesPaternity } from "./reproduction.ts";
 import { World } from "./sim.ts";
 import {
   DEATH_LABELS,
@@ -26,11 +27,12 @@ import {
   APPEARANCE_DEFAULTS,
   ADAPTATION_DEFAULTS,
 } from "./species.ts";
-import { maturityAge, lifespan } from "./biology.ts";
-import { type Species, type Animal } from "./model.ts";
+import { laysEggs, maturityAge, lifespan } from "./biology.ts";
+import { type Species, type Animal, type PlantKind } from "./model.ts";
 import { WORLD_RADIUS } from "./terrain.ts";
 import { initialLandscape, LAND_SIDE } from "./terrain.ts";
-import { initialPonds } from "./ecology.ts";
+import { initialPonds, MAX_POND_ALGAE, startingAlgae, type Pond } from "./ecology.ts";
+import { ANIMAL_ENERGY_CAPACITY, MAX_PLANT_LIQUID, SEED_FOOD } from "./food-energy.ts";
 
 export const SAVE_KEY = "evolutio.island.v1";
 export interface Session {
@@ -270,10 +272,16 @@ export function decodeSave(raw: string): Session {
         number(p.water, 0, 1) &&
         number(p.flow, 0, 1) &&
         number(p.food, 0, 1) &&
+        (p.algae === undefined || number(p.algae, 0, MAX_POND_ALGAE)) &&
+        (p.plankton === undefined || number(p.plankton, 0, MAX_POND_ALGAE)) &&
         number(p.radius, 1, 10),
     )
   )
     fail();
+  for (const p of w.ponds as (Pond & { plankton?: number })[]) {
+    p.algae ??= p.plankton ?? startingAlgae(p.water);
+    delete p.plankton;
+  }
   if (!Array.isArray(w.dens) || w.dens.length > 152) fail();
   if (
     !number(w.seed, 0, 4294967295) ||
@@ -322,7 +330,7 @@ export function decodeSave(raw: string): Session {
       !id(item.generation) ||
       !number(item.x, -WORLD_RADIUS - 2, WORLD_RADIUS + 2) ||
       !number(item.z, -WORLD_RADIUS - 2, WORLD_RADIUS + 2) ||
-      !number(item.energy, 0, 140) ||
+      !number(item.energy, 0, ANIMAL_ENERGY_CAPACITY) ||
       !number(item.age)
     )
       fail();
@@ -457,6 +465,10 @@ export function decodeSave(raw: string): Session {
         !number(a.web.z, -WORLD_RADIUS, WORLD_RADIUS) || !number(a.web.expires) || !Number.isInteger(a.web.prey) || a.web.prey < 0)) ||
       (a.natalDispersal !== undefined && typeof a.natalDispersal !== "boolean") ||
       (a.lastPreyAt !== undefined && !number(a.lastPreyAt)) ||
+      (a.wolfSearch !== undefined && (!a.wolfSearch || a.species !== "wolf" ||
+        !number(a.wolfSearch.x, -WORLD_RADIUS, WORLD_RADIUS) || !number(a.wolfSearch.z, -WORLD_RADIUS, WORLD_RADIUS) ||
+        !number(a.wolfSearch.until))) ||
+      (a.mosquitoFed !== undefined && (a.species !== "mosquito" || typeof a.mosquitoFed !== "boolean")) ||
       (a.webScout !== undefined && (!a.webScout || a.species !== "spider" ||
         !number(a.webScout.x, -WORLD_RADIUS, WORLD_RADIUS) || !number(a.webScout.z, -WORLD_RADIUS, WORLD_RADIUS) ||
         !number(a.webScout.until) || (a.webScout.natal !== undefined && typeof a.webScout.natal !== "boolean") ||
@@ -467,7 +479,7 @@ export function decodeSave(raw: string): Session {
       (a.lastMushroomTime !== undefined && !number(a.lastMushroomTime)) ||
       (a.lastMushroomCell !== undefined && !number(a.lastMushroomCell, 0, LAND_SIDE * LAND_SIDE - 1)) ||
       (a.stungUntilAge !== undefined && !number(a.stungUntilAge)) ||
-      !number(a.mealEnergy, 0, 140) ||
+      !number(a.mealEnergy, 0, ANIMAL_ENERGY_CAPACITY) ||
       !number(a.mealTime, 0, 100) ||
       !number(a.mealX, -WORLD_RADIUS - 2, WORLD_RADIUS + 2) ||
       !number(a.mealZ, -WORLD_RADIUS - 2, WORLD_RADIUS + 2) ||
@@ -618,6 +630,8 @@ export function decodeSave(raw: string): Session {
       !number(p.variety, 0, 2) ||
       !number(p.lastGrowthAt, 0, w.time) ||
       !Object.hasOwn(PLANTS, p.kind) ||
+      (p.seedFood !== undefined && !number(p.seedFood, 0, SEED_FOOD[p.kind as PlantKind].capacity)) ||
+      (p.liquidFood !== undefined && !number(p.liquidFood, 0, MAX_PLANT_LIQUID)) ||
       !number(p.growth, 0.3, 1.7) ||
       !number(p.defense, 0, 0.8) ||
       !number(p.spread, 1, 6)
@@ -761,12 +775,36 @@ export function decodeSave(raw: string): Session {
     (world as unknown as Record<string, unknown>)[key] = w[key];
   if (w.foodTotals !== undefined) {
     if (!w.foodTotals || typeof w.foodTotals !== "object" || Array.isArray(w.foodTotals)) fail();
-    const foods = new Set([...Object.keys(SPECIES), ...Object.keys(PLANTS), "worms", "mushrooms", "pond food", "dead plants", "carrion", "older catch", "eggs", "blood", "nectar", "fruit juice"]);
+    const foods = new Set([...Object.keys(SPECIES), ...Object.keys(PLANTS), ...Object.values(SEED_FOOD).map(({ label }) => label), "worms", "mushrooms", "pond food", "algae", "plankton", "dead plants", "carrion", "older catch", "eggs", "blood", "nectar", "fruit juice", "sap"]);
     for (const [species, diet] of Object.entries(w.foodTotals)) {
       if (!Object.hasOwn(SPECIES, species) || !diet || typeof diet !== "object" || Array.isArray(diet) ||
           !Object.entries(diet).every(([food, value]) => foods.has(food) && number(value))) fail();
+      const totals = diet as Record<string, number>;
+      if (totals.plankton !== undefined) {
+        const algae = (totals.algae ?? 0) + totals.plankton;
+        if (!number(algae)) fail();
+        totals.algae = algae;
+        delete totals.plankton;
+      }
     }
     world.foodTotals = w.foodTotals;
+  }
+  if (w.treeBrowseDamage !== undefined) {
+    if (!w.treeBrowseDamage || typeof w.treeBrowseDamage !== "object" || Array.isArray(w.treeBrowseDamage) ||
+        !Object.entries(w.treeBrowseDamage).every(([species, damage]) => Object.hasOwn(SPECIES, species) && number(damage))) fail();
+    world.treeBrowseDamage = w.treeBrowseDamage;
+  }
+  if (w.eggsLaidBySpecies !== undefined) {
+    const counts = w.eggsLaidBySpecies;
+    if (!counts || typeof counts !== "object" || Array.isArray(counts)) fail();
+    let total = 0;
+    for (const [species, count] of Object.entries(counts)) {
+      if (!Object.hasOwn(SPECIES, species) || !laysEggs(species as Species) ||
+          !number(count) || !Number.isInteger(count)) throw new Error("Invalid egg counts in island save.");
+      total += count;
+    }
+    if (total > world.eggsLaid) fail();
+    world.eggsLaidBySpecies = counts;
   }
   if (w.evolution !== undefined)
     world.evolution = readEvolutionArchive(w.evolution);
@@ -776,7 +814,7 @@ export function decodeSave(raw: string): Session {
     recordEvolution(world);
   }
   // Older saves still record both parents of successful broods.
-  const mothers = new Map(world.animals.filter(a => (a.species === "ant" || a.species === "fly") &&
+  const mothers = new Map(world.animals.filter(a => storesPaternity(a.species) &&
     !a.reproductive?.previousMate).map(a => [a.id, a]));
   for (const child of world.evolution.family) {
     const mother = mothers.get(child.parent);

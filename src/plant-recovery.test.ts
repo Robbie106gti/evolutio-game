@@ -87,7 +87,7 @@ world.plants[0].reserves = 0;
 world.plants[0].depletion = 100;
 const shrub = { ...world.plants.find(p => p.kind === "bush")!, energy: 10, health: 100 };
 const rootStock = PLANTS.bush.capacity * 0.12;
-const lastBite = grazePlant(shrub, "mouse", 30);
+const lastBite = grazePlant(shrub, "turtle", 30);
 assert(lastBite.removed === 10 - rootStock && shrub.energy === rootStock,
   "A long feeding step leaves non-edible stems and buds");
 assert(!worthBrowsing(shrub, 1) && grazePlant(shrub, "bug", 1).eaten === 0,
@@ -98,6 +98,27 @@ assert(!worthBrowsing(shrub, 1), "New shoots remain too sparse to browse");
 shrub.energy = PLANTS.bush.capacity * 0.31;
 recoverPlant(shrub, 1, () => 1);
 assert(worthBrowsing(shrub, 60), "The patch becomes attractive again after regrowing");
+const canopy = { ...world.plants.find(p => p.kind === "tree")!,
+  energy: PLANTS.tree.capacity, defense: 0, health: 100, stripped: false };
+const browsedTree = { ...canopy };
+assert(grazePlant(browsedTree, "bug", 1).removed <= 1, "Bugs take smaller bites from trees");
+grazePlant(browsedTree, "bug", 120);
+assert(browsedTree.energy >= PLANTS.tree.capacity * 0.5 && !browsedTree.stripped &&
+  !worthBrowsing(browsedTree, 20, "bug") && worthBrowsing(browsedTree, 20, "turtle") &&
+  grazePlant(browsedTree, "bug", 1).removed === 0,
+  "Bugs leave at least half the canopy under sustained feeding");
+for (const kind of ["grass", "bush"] as const) {
+  const patch = { ...world.plants.find(p => p.kind === kind)!, energy: PLANTS[kind].capacity, stripped: false };
+  grazePlant(patch, "bug", 120);
+  assert(patch.energy === PLANTS[kind].capacity * 0.3 && !patch.stripped,
+    `Dense bug browsing leaves a recovery reserve in ${kind}`);
+}
+for (const species of ["fly", "mosquito", "mouse", "ant"] as const) {
+  const tree = { ...canopy };
+  assert(grazePlant(tree, species, 1).eaten === 0 && tree.energy === canopy.energy,
+    `${species} cannot harvest tree foliage`);
+}
+assert(grazePlant({ ...canopy }, "turtle", 1).removed === 4.5, "A turtle can still take a full browsing bite");
 const restored = decodeSave(
   encodeSave({ world, rate: 1, paused: true, selected: 0 }),
 ).world;

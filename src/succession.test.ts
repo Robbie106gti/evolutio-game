@@ -1,6 +1,7 @@
 import { World } from "./sim.ts";
 import { stepLandscape, waterDepth } from "./ecology.ts";
-import { initialLandscape, landAt } from "./terrain.ts";
+import { initialLandscape, landAt, landIndex } from "./terrain.ts";
+import { hasBreedingHealth, illnessSpeed, prepareAnimalDisease } from "./animal-disease.ts";
 import { encodeSave, decodeSave } from "./save.ts";
 function assert(ok: unknown, message: string): asserts ok {
   if (!ok) throw new Error(message);
@@ -139,11 +140,85 @@ for (const a of [susceptible, resistant]) {
 }
 susceptible.genes.immunity = 0;
 resistant.genes.immunity = 1;
+susceptible.infection = 0.9;
 illness.step(1);
+assert(susceptible.infection === 0 && resistant.infection === 0,
+  "A tiny population is protected from disease even in dense fungi");
+for (let i = 0; i < 26; i++) {
+  const neighbor = illness.addAnimal("grazer", undefined, "mouse");
+  Object.assign(neighbor, { x: -30, z: 25, hydration: 100 });
+}
+const rareBug = illness.addAnimal("grazer", undefined, "bug");
+Object.assign(rareBug, { x: -30, z: 25, hydration: 100 });
+const isolatedMouse = illness.addAnimal("grazer", undefined, "mouse");
+Object.assign(isolatedMouse, { x: 30, z: -25, hydration: 100 });
+const approximateIllness = decodeSave(
+  encodeSave({ world: illness, rate: 1, paused: true, selected: 0 }),
+).world;
+illness.step(1);
+approximateIllness.step(1, true);
 assert(
   susceptible.infection > resistant.infection,
-  "Immunity limits spore infection",
+  "Immunity limits infection in a densely packed population",
 );
+assert(rareBug.infection === 0 && isolatedMouse.infection === 0,
+  "Disease pressure is local and specific to the crowded species");
+assert((approximateIllness.animals.find(a => a.id === susceptible.id)?.infection ?? 0) > 0 &&
+  approximateIllness.animals.find(a => a.id === rareBug.id)?.infection === 0,
+  "Approximate mode applies the same crowding and small-population protection");
+const crowds = new World(99);
+crowds.animals = [];
+const crowdedSpecies = ["bug", "mouse", "fish"] as const;
+for (const species of crowdedSpecies)
+  for (let i = 0; i < 32; i++) {
+    const animal = crowds.addAnimal("grazer", undefined, species);
+    Object.assign(animal, { x: -30, z: 25 });
+    animal.genes.immunity = 0.5;
+  }
+const patch = landIndex(-30, 25);
+const outbreak = prepareAnimalDisease(crowds.animals);
+for (const animal of crowds.animals) outbreak.update(animal, patch, 1, 5);
+const [crowdedBug, crowdedMouse, crowdedFish] =
+  crowdedSpecies.map(s => crowds.animals.find(a => a.species === s)!);
+assert(crowdedBug.infection > crowdedMouse.infection && !hasBreedingHealth(crowdedBug),
+  "Dense bugs face stronger disease pressure and stop breeding earlier");
+assert(crowdedFish.infection < crowdedMouse.infection && hasBreedingHealth(crowdedFish),
+  "A school of fish is less vulnerable to fungal exposure on the same patch");
+const fungalOutbreak = new World(99, undefined, true);
+fungalOutbreak.animals = [];
+fungalOutbreak.plants = [];
+fungalOutbreak.time = 90.2;
+fungalOutbreak.weather.cloud = 0;
+fungalOutbreak.weather.land![patch].fungus = 1;
+const colony = Array.from({ length: 80 }, () => {
+  const bug = fungalOutbreak.addAnimal("grazer", undefined, "bug");
+  Object.assign(bug, { x: -29, z: 26, hydration: 100, age: 20 });
+  return bug;
+});
+const drawnToPredator = colony.find(a => a.id % 4 === 0)!;
+const carrier = colony.find(a => a.id % 4 !== 0)!;
+const neighbor = colony.find(a => a !== carrier && a !== drawnToPredator)!;
+Object.assign(drawnToPredator, { x: -29, z: 25, infection: 1 });
+Object.assign(carrier, { x: -30, z: 25, infection: 1 });
+Object.assign(neighbor, { x: -29.7, z: 25 });
+const hunter = fungalOutbreak.addAnimal("grazer", undefined, "mouse");
+Object.assign(hunter, { x: -26, z: 25, hydration: 100, age: 40, energy: 110 });
+hunter.genes.dietAffinity = 0.8;
+assert(Math.abs(illnessSpeed(carrier) - 0.35) < 1e-9 && illnessSpeed(neighbor) === 1,
+  "Severe illness reduces movement speed by 65%");
+const compulsion = prepareAnimalDisease(fungalOutbreak.animals);
+assert(compulsion.compelled(carrier, patch, 1) && !compulsion.compelled(carrier, patch, 0),
+  "A crowded patch needs fungal exposure or widespread illness to change behavior");
+const outbreakSave = encodeSave({ world: fungalOutbreak, rate: 1, paused: true, selected: 0 });
+for (const approximate of [false, true]) {
+  const trial = decodeSave(outbreakSave).world;
+  trial.step(0.1, approximate);
+  const find = (id: number) => trial.animals.find(a => a.id === id)!;
+  assert(find(carrier.id).state === "Spreading infection" && find(neighbor.id).infection > 0,
+    "A fungal compulsion spreads illness through close contact in both simulation modes");
+  assert(find(drawnToPredator.id).state === "Seeking predators" && find(hunter.id).infection === 0,
+    "Some compelled animals approach hunters without passing disease to another species");
+}
 const illPlant = illness.addPlant(undefined, -30, 25, "tree")!;
 illPlant.infection = 1;
 illPlant.resistance = 0;
@@ -233,7 +308,7 @@ insectParent.x = -30;
 insectParent.z = 25;
 nursery.layClutch(insectParent);
 assert(
-  nursery.eggsLaid === 100 && nursery.eggs.length > 0 && nursery.eggs.length + nursery.eggsLost === 100 && nursery.animals.length === 1,
+  nursery.eggsLaid === 80 && nursery.eggs.length > 0 && nursery.eggs.length + nursery.eggsLost === 80 && nursery.animals.length === 1,
   "Bugs lay a clutch rather than instant babies",
 );
 assert(
@@ -255,7 +330,7 @@ assert(
 for (const e of nursery.eggs) e.age = e.duration - 0.01;
 nursery.step(0.1);
 assert(
-  Number(nursery.eggs.length) === 0 && nursery.births + nursery.eggsLost === 100,
+  Number(nursery.eggs.length) === 0 && nursery.births + nursery.eggsLost === nursery.eggsLaid,
   "Hatching accounts for survivors and egg losses",
 );
 const aquaticWorld = new World(4);

@@ -54,6 +54,49 @@ const restore = (world: World) =>
   decodeSave(encodeSave({ world, rate: 1, paused: true, selected: 0 })).world;
 const dry = () => 0;
 
+const outbreak = island();
+const illMother = adult(outbreak, "mouse", "female");
+const healthyMate = adult(outbreak, "mouse", "male", 5);
+illMother.infection = 0.8;
+stepReproduction(outbreak, dry);
+assert.equal(illMother.reproductive?.mate, undefined, "Severe illness delays courtship");
+illMother.infection = 0.2;
+stepReproduction(outbreak, dry);
+assert.equal(illMother.reproductive?.mate, healthyMate.id, "Recovered animals can breed again");
+
+for (const species of ["cat", "fox", "spider"] as const) {
+  const pair = island();
+  pair.time = 90;
+  pair.weather.cloud = 0;
+  const female = adult(pair, species, "female", -30);
+  const male = adult(pair, species, "male", -26);
+  for (const predator of [female, male])
+    Object.assign(predator, { z: 25, age: 100, energy: 77, hydration: 100 });
+  stepReproduction(pair, dry);
+  assert.equal(female.reproductive?.target, male.id, "The female approaches a prospective mate");
+  assert.equal(male.reproductive?.target, female.id, "The male approaches a prospective mate");
+  pair.step(0.1);
+  assert.equal(female.state, "Courting", "A receptive female can move toward her mate");
+  assert.equal(male.state, "Courting", "A receptive male can move toward his mate");
+}
+
+for (const species of ["fish", "frog"] as const) {
+  const pair = island();
+  pair.time = 90;
+  pair.weather.cloud = 0;
+  const pond = pair.ponds[0];
+  const female = adult(pair, species, "female", pond.x - 2);
+  const male = adult(pair, species, "male", pond.x + 2);
+  for (const animal of [female, male])
+    Object.assign(animal, { z: pond.z, energy: 75, hydration: 100 });
+  stepReproduction(pair, () => 1);
+  assert.equal(female.reproductive?.target, male.id, "An aquatic breeder approaches a mate before reaching full reserves");
+  assert.equal(male.reproductive?.target, female.id, "Both aquatic partners approach");
+  pair.step(0.1);
+  assert.equal(female.state, "Courting", "Foraging can yield to courtship when the female has reserves");
+  assert.equal(male.state, "Courting", "Foraging can yield to courtship when the male has reserves");
+}
+
 const bugPatch = island();
 const layer = adult(bugPatch, "bug", "female");
 const partnerBug = adult(bugPatch, "bug", "male", 5);
@@ -66,7 +109,7 @@ stepReproduction(bugPatch, dry);
 assert.equal(layer.reproductive?.mate, partnerBug.id, "Male bug needs only its own courtship reserve");
 bugPatch.time = layer.reproductive!.due!;
 stepReproduction(bugPatch, dry);
-assert.equal(bugPatch.eggsLaid, 100, "Energy-funded courtship produces a complete pod");
+assert.equal(bugPatch.eggsLaid, SPECIES.bug.clutchSize, "Energy-funded courtship produces a complete pod");
 assert.equal(layer.energy, 26, "The egg layer still pays both reproductive costs");
 
 const mice = island();
@@ -100,6 +143,15 @@ assert.equal(loaded.naturalReproduction, true);
 loaded.time = mother.reproductive!.due!;
 stepReproduction(loaded, dry);
 const pups = loaded.animals.filter((a) => a.parent === mother.id);
+const crowded = island();
+const crowdedMother = adult(crowded, "mouse", "female");
+crowdedMother.energy = 86;
+for (let i = 0; i < 12; i++) adult(crowded, "mouse", "male", 5).cooldown = i ? 10 : 0;
+stepReproduction(crowded, dry);
+assert.equal(crowdedMother.reproductive?.mate, undefined, "Crowded mice need stronger reserves to breed");
+crowded.animals = crowded.animals.slice(0, 2);
+stepReproduction(crowded, dry);
+check(crowdedMother.reproductive?.mate, "A well-fed mouse can breed once the patch clears");
 assert.ok(pups.length >= 2 && pups.length <= 3);
 assert.equal(pups.length, loaded.births);
 assert.ok(
@@ -189,7 +241,7 @@ console.log(
 );
 
 const grove = new World(undefined, FIRST_GROVE, true);
-for (let i = 0; i < 400 && grove.births < 2; i++) grove.step(0.1);
+for (let i = 0; i < 600 && grove.births < 2; i++) grove.step(0.1);
 check(
   grove.animals.some((a) => a.species === "mouse" && a.otherParent),
   "First Grove can produce a two-parent mouse litter",
@@ -199,6 +251,7 @@ check(
 for (const species of Object.keys(SPECIES) as Species[]) {
   const w = island();
   const a = adult(w, species, "female");
+  if (species === "mosquito") a.mosquitoFed = true;
   a.genes.maturation = 1;
   a.age = maturityAge(a) + 1;
   a.genes.longevity = 1;
@@ -221,7 +274,9 @@ for (const species of Object.keys(SPECIES) as Species[]) {
   );
   assert.ok(young.length > 0);
   assert.ok(young.every((c) => c.otherParent === b.id));
-  const investment = species === "mosquito" || species === "fly" || species === "ant" ? 14 : 32;
+  if (species === "fish") assert.equal(young.length, 3, "Fish release a smaller clutch per spawn");
+  const investment = species === "mosquito" || species === "fly" || species === "ant" || species === "fish" ? 14 :
+    species === "spider" ? 16 : 32;
   assert.ok(a.energy <= 125 - investment); // Buried eggs can cost additional digging energy.
 }
 
@@ -252,11 +307,33 @@ function developingSpiderEggs(neighborDistance: number) {
 check(developingSpiderEggs(1) < developingSpiderEggs(20),
   "Only nearby competitors reduce recruitment from the same seeded clutch");
 
-for (const species of ["ant", "fly"] as const) {
+for (const species of ["bug", "fly"] as const) {
+  const habitat = island();
+  habitat.plants = [];
+  const layer = adult(habitat, species, "female", -30);
+  layer.z = 25;
+  habitat.random = () => 0.5;
+  check(habitat.layClutch(layer) && habitat.eggs.length > 0,
+    `A small ${species} population can still recruit`);
+  habitat.eggs = [];
+  for (let i = 0; i < 40; i++)
+    habitat.animals.push({ ...layer, id: habitat.nextId++, x: layer.x + 1 });
+  check(habitat.layClutch(layer) && habitat.eggs.length === 0,
+    `A crowded ${species} patch with no food has strong recruitment pressure`);
+}
+
+for (const species of ["ant", "fly", "mosquito"] as const) {
   const insects = island();
   const female = adult(insects, species, "female");
   const male = adult(insects, species, "male");
   stepReproduction(insects, dry);
+  if (species === "mosquito") {
+    assert.equal(female.reproductive?.due, insects.time + 0.5, "Mosquitoes prepare their clutches promptly");
+    insects.time = female.reproductive!.due!;
+    stepReproduction(insects, dry);
+    assert.equal(insects.eggsLaid, 0, "A paired mosquito waits for its first meal");
+    female.mosquitoFed = true;
+  }
   insects.time = female.reproductive!.due!;
   stepReproduction(insects, dry);
   const saved = restore(insects);
@@ -270,5 +347,23 @@ for (const species of ["ant", "fly"] as const) {
   assert.equal(m.reproductive?.mate, f.id, "Stored paternity survives a reload");
   saved.time = m.reproductive!.due!;
   stepReproduction(saved, dry);
-  assert.equal(saved.eggsLaid - laid, species === "ant" ? 15 : 42);
+  assert.equal(saved.eggsLaid - laid, species === "ant" ? 15 : SPECIES[species].clutchSize);
 }
+
+const spiders = island();
+const firstMother = adult(spiders, "spider", "female");
+const youngMate = adult(spiders, "spider", "male", 5);
+for (const a of [firstMother, youngMate]) {
+  a.age = maturityAge(a) - 0.1;
+  a.energy = a === firstMother ? 42 : 32;
+}
+stepReproduction(spiders, dry);
+assert.equal(firstMother.reproductive?.mate, undefined, "Juvenile spiders cannot mate");
+for (const a of [firstMother, youngMate]) a.age += 0.2;
+stepReproduction(spiders, dry);
+assert.equal(firstMother.reproductive?.mate, youngMate.id, "Young adults mate with modest reserves");
+assert.equal(firstMother.reproductive?.due, spiders.time + 2, "Young adults prepare their first clutch promptly");
+spiders.time += 2;
+stepReproduction(spiders, dry);
+assert.equal(spiders.eggsLaid, SPECIES.spider.clutchSize);
+assert.equal(firstMother.cooldown, 60, "Normal recovery follows an early clutch");

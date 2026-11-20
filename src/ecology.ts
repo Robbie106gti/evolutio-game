@@ -1,4 +1,5 @@
 import { landIndex } from "./terrain.ts";
+import { illnessVulnerability } from "./animal-disease.ts";
 import { recycleLitter } from "./decomposition.ts";
 import { FUNGI } from "./profiles.ts";
 import { type Animal, type Plant } from "./model.ts";
@@ -32,6 +33,7 @@ export const DAY_LENGTH = 180;
 export interface Pond {
   flow: number;
   food: number;
+  algae?: number;
   id: number;
   x: number;
   z: number;
@@ -54,8 +56,10 @@ export interface Weather {
   cloud: number;
   raining: boolean;
 }
+export const startingAlgae = (water: number) => water * 0.2;
+export const MAX_POND_ALGAE = 0.45;
 export const initialPonds = (): Pond[] =>
-  LAKES.map((p) => ({ ...p, water: 0.85, food: 1, flow: 0 }));
+  LAKES.map((p) => ({ ...p, water: 0.85, food: 1, algae: startingAlgae(0.85), flow: 0 }));
 const clamp = (x: number, min = 0, max = 1) => Math.max(min, Math.min(max, x));
 export function climate(time: number, weather: Weather) {
   const phase = (time / DAY_LENGTH + 0.2) % 1;
@@ -137,6 +141,11 @@ export function stepWater(
         evaporated -
         pond.flow * 0.005 * dt +
         regionalClimate(time, weather, pond.x, pond.z).rain * 0.014 * dt,
+    );
+    pond.algae = Math.min(
+      MAX_POND_ALGAE * pond.water,
+      (pond.algae ?? startingAlgae(pond.water)) +
+        dt * 0.008 * (0.2 + c.sunlight) * pond.water,
     );
     evaporation += evaporated;
   }
@@ -278,7 +287,7 @@ export function detectionRange(
       (1 - 0.35 * terrain.cover) *
       motion *
       (sheltered ? 0.25 : 1),
-  );
+  ) * illnessVulnerability(prey);
 }
 export const eyesightCost = (eyesight: number) => 0.035 * eyesight * eyesight;
 

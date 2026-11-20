@@ -75,3 +75,11 @@ if (!brood.eggsLaid || nest.pantry!.carrion >= 20 ||
   throw Error("A delivered meal must pay for a queen brood inside its hill");
 const reload = decodeSave(encodeSave({world:brood,paused:true,selected:0,rate:1})).world;
 if (reload.dens.find(d=>d.id===nest.id)?.queen !== nest.queen) throw Error("Queen lost on reload");
+const queen = pair[0];
+Object.assign(queen, { cooldown: 0, energy: 75 });
+Object.assign(nest.pantry!, { carrion: 1.5, "dead plants": 0, crop: 0 });
+const laid = brood.eggsLaid;
+brood.time = Math.floor(brood.time) + 0.95;
+brood.step(0.1);
+if (brood.eggsLaid !== laid + 3 || nest.pantry!.carrion !== 0)
+  throw Error("A small colony can spend its limited pantry on a small brood");

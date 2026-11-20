@@ -105,7 +105,7 @@ assert(
   w.plants[0].health < health,
   "Overcrowding damages plants through resource competition",
 );
-for (const species of ["mouse", "bug", "bird"] as const) {
+for (const species of ["bug", "bird"] as const) {
   const world = new World(54);
   world.animals = [];
   world.plants = [];

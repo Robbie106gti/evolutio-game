@@ -80,6 +80,17 @@ for (const source of ["plant", "animal"] as const) {
   assert.deepEqual(loaded.carcasses, w.carcasses);
   assert.deepEqual(loaded.plantRemains, w.plantRemains);
 }
+const flyPatch = new World(54);
+flyPatch.animals = [];
+flyPatch.plants = [];
+const fly = flyPatch.addAnimal("grazer", undefined, "fly");
+Object.assign(fly, { x: remains.x, z: remains.z, age: 40, energy: 40, hydration: 100 });
+flyPatch.plantRemains = [{ ...remains, kind: "tree", variety: 0, decay: 0 }];
+flyPatch.step(0.1);
+const flyMeal = flyPatch.foodTotals.fly?.["dead plants"] ?? 0;
+assert(Math.abs(flyMeal - 0.1 * DETRITUS_BITE_RATE * DETRITUS_NUTRITION * 2) < 1e-9,
+  `A fly receives the reduced energy yield from a bite of detritus (${fly.state}, ${flyMeal})`);
+
 const w = new World(54);
 w.animals = [];
 w.eggs = [];

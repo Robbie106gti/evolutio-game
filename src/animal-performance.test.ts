@@ -37,6 +37,7 @@ Object.assign(a, {
   sensedTarget: 0,
 });
 const food = w.addPlant(undefined, a.x + 0.4, a.z, "grass")!;
+Object.assign(food, { age: 10, seedFood: 3 });
 w.step(0.1);
 assert(
   a.sensedTarget === food.id,
@@ -52,7 +53,7 @@ assert(
 );
 const cat = w.addAnimal("hunter", undefined, "cat");
 Object.assign(cat, {
-  x: a.x + 0.8,
+  x: a.x + 1.8, // Within urgent sensing range, outside a pounce.
   z: a.z,
   age: 80,
   energy: 40,

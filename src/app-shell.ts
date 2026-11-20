@@ -40,7 +40,22 @@ export const APP_SHELL = `
 <div class="journal-actions"><button id="open-evolution" class="meet-animal">Explore evolution &amp; family trees ↗</button><button id="lineage-overlay-toggle" class="meet-animal" aria-pressed="false">Show family colours</button><p id="lineage-overlay-help" hidden>Coloured rings identify mouse lineages. Select a mouse to show only its lineage; clear selection to show all. Colours are a guide, not camouflage.</p><button id="youngest" class="meet-animal">Meet the youngest ↗</button><button id="sleepers" class="meet-animal">Watch a sleeper</button><button id="enable-breeding" class="meet-animal" hidden>Enable natural reproduction</button><div id="breeding-guide" hidden><p>Pink rings mark courtship, orange rings mark rivals, gold rings mark animals expecting young, and teal rings mark fish changing sex.</p><button id="watch-breeding" class="meet-animal" disabled>Watch breeding activity</button></div></div>
 <details class="journal-section"><summary>Weather &amp; habitat</summary><div id="weather-panel" class="weather-panel"></div><div class="biome-key">Forest · Plains · Desert · Lakes · River</div></details>
 <details class="journal-section"><summary>Population &amp; survival</summary><canvas id="chart" width="560" height="280" aria-label="Population history by diet and plants" role="img"></canvas><div id="counts" class="chart-key" title="Diets reflect this simulation. Bugs recycle remains as detritivores; mice change diet category with inherited traits."></div><h3>Causes of death</h3><div id="mortality"></div></details>
-<details class="journal-section"><summary>Wildlife</summary><div class="introduce-controls"><label>Animal <select id="animal-kind"></select></label><label>Number <select id="animal-count"><option value="1">1</option><option value="5">5</option><option value="12" selected>12</option></select></label><button id="add-animals">Add animals</button><p id="animal-add-status" role="status"></p></div><div id="species-list"></div><button id="introduce" class="meet-animal">Introduce missing species</button><p id="wildlife-note" class="muted">Select a species to meet one.</p></details>
+<details class="journal-section" id="egg-journal"><summary>Eggs by species</summary>
+<table class="egg-table">
+<caption>Eggs that are developing or waiting right now</caption>
+<thead><tr><th scope="col">Species</th><th scope="col">Laid</th><th scope="col">Developing</th><th scope="col">Waiting</th></tr></thead>
+<tbody id="egg-rows"></tbody>
+</table>
+<p class="egg-note">Waiting eggs need suitable conditions to resume. The Laid column counts all eggs since tracking began, including losses. Older saves start tracking with this update.</p>
+</details>
+<details class="journal-section" id="tree-browse-journal"><summary>Tree browsing by species</summary>
+<table class="egg-table">
+<caption>Tree energy removed by feeding since tracking began</caption>
+<thead><tr><th scope="col">Species</th><th scope="col">Energy removed</th></tr></thead>
+<tbody id="tree-browse-rows"></tbody>
+</table>
+</details>
+<details class="journal-section"><summary>Wildlife</summary><div class="introduce-controls"><label>Animal <select id="animal-kind"></select></label><label>Number <select id="animal-count"><option value="1">1</option><option value="5">5</option><option value="12" selected>12</option></select></label><button id="add-animals">Add animals</button><p id="animal-add-status" role="status"></p></div><div id="species-list"></div><button id="introduce" class="meet-animal">Introduce missing species</button><p id="wildlife-note" class="muted" role="status">Select a species to meet one.</p></details>
 <details class="journal-section"><summary>Evolution &amp; lineages</summary><h3>Inherited traits</h3><div id="traits"></div><h3>Mouse branches</h3><div id="mouse-branches"></div><h3>Plant lineages</h3><div id="plant-lineages"></div></details>
 <div class="challenge"><div class="eyebrow">TRY AN EXPERIMENT</div><h3 id="challenge-title">Room to grow</h3><p id="challenge-text">Food is plentiful. Give your first generations time to settle in.</p><button id="scarcity">Try lean times <span>→</span></button></div>
 <details class="journal-section"><summary>Field notes</summary><div id="events"></div></details>
