@@ -221,7 +221,7 @@ for (const species of Object.keys(SPECIES) as Species[]) {
   );
   assert.ok(young.length > 0);
   assert.ok(young.every((c) => c.otherParent === b.id));
-  const investment = species === "mosquito" || species === "fly" ? 14 : 32;
+  const investment = species === "mosquito" || species === "fly" || species === "ant" ? 14 : 32;
   assert.ok(a.energy <= 125 - investment); // Buried eggs can cost additional digging energy.
 }
 
@@ -238,3 +238,37 @@ assert.equal(hungryPair.births, 0, "Energy-poor mothers delay delivery");
 hungryMother.energy = 80;
 stepReproduction(hungryPair, dry);
 assert.ok(hungryPair.births > 0);
+
+function developingSpiderEggs(neighborDistance: number) {
+  const world = new World(7823);
+  const mother = world.addAnimal("hunter", undefined, "spider");
+  world.animals = [mother];
+  world.eggs = [];
+  for (let i = 0; i < 40; i++)
+    world.animals.push({ ...mother, id: world.nextId++, x: mother.x + neighborDistance });
+  world.layClutch(mother);
+  return world.eggs.length;
+}
+check(developingSpiderEggs(1) < developingSpiderEggs(20),
+  "Only nearby competitors reduce recruitment from the same seeded clutch");
+
+for (const species of ["ant", "fly"] as const) {
+  const insects = island();
+  const female = adult(insects, species, "female");
+  const male = adult(insects, species, "male");
+  stepReproduction(insects, dry);
+  insects.time = female.reproductive!.due!;
+  stepReproduction(insects, dry);
+  const saved = restore(insects);
+  const m = saved.animals.find(a => a.id === female.id)!;
+  const f = saved.animals.find(a => a.id === male.id)!;
+  f.x = -50;
+  m.cooldown = 0;
+  m.energy = 30;
+  const laid = saved.eggsLaid;
+  stepReproduction(saved, dry);
+  assert.equal(m.reproductive?.mate, f.id, "Stored paternity survives a reload");
+  saved.time = m.reproductive!.due!;
+  stepReproduction(saved, dry);
+  assert.equal(saved.eggsLaid - laid, species === "ant" ? 15 : 42);
+}

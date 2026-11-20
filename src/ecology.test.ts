@@ -79,6 +79,7 @@ assert(
 );
 const homeWorld = new World(9);
 homeWorld.plants = [];
+homeWorld.dens = [];
 homeWorld.animals = [homeWorld.animals.find((a) => a.species === "mouse")!];
 homeWorld.time = 90;
 const builder = homeWorld.animals[0];

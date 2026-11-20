@@ -1,5 +1,5 @@
 import { World } from "./sim.ts";
-import { ingest, mealYield } from "./food-energy.ts";
+import { browseValue, ingest, mealYield } from "./food-energy.ts";
 import { maturityAge } from "./biology.ts";
 import { decodeSave, encodeSave } from "./save.ts";
 
@@ -18,3 +18,9 @@ if (world.foodTotals.cat?.mouse !== 3 || cat.energy !== 140) throw Error("Count 
 const raw = encodeSave({world, rate: 1, paused: true, selected: 0});
 if (decodeSave(raw).world.foodTotals.cat?.mouse !== 3) throw Error("Meal history lost");
 console.log("Prey age, inherited size, intake capacity and saved diet totals passed");
+
+const patch = { ...world.plants[0], kind: "grass" as const, energy: 30 };
+const value = browseValue(patch, 1, 0);
+if (value <= browseValue({ ...patch, energy: 5 }, 1, 0) ||
+    value <= browseValue(patch, 2, 0) || value <= browseValue(patch, 1, 2))
+  throw Error("Food remaining, travel distance and other visitors must affect patch choice");

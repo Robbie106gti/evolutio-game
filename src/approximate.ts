@@ -1,5 +1,5 @@
 import { collectSeed, dropSeed } from "./seed-dispersal.ts";
-import { grazePlant, ingest, mealYield } from "./food-energy.ts";
+import { worthBrowsing, grazePlant, ingest, mealYield } from "./food-energy.ts";
 import type { World } from "./sim.ts";
 import type { Animal, Plant } from "./model.ts";
 import {
@@ -297,7 +297,7 @@ export function stepApproximateAnimals(
       }
       if (!ate && eatsPlants(a) && patch.plants.length) {
         const p = sample(patch.plants);
-        if (p.health > 0 && p.energy > 0 && depthAt(p.x, p.z) < 0.15) {
+        if (worthBrowsing(p, a.energy) && depthAt(p.x, p.z) < 0.15) {
           const { removed, eaten: bite } = grazePlant(p, a.species, dt);
           if (bite > 0 && !a.seedCargo && w.random() < encounterProbability(0.25, dt))
             collectSeed(w.seedBank, a, p, a.species === "mouse" && a.energy >= 55 ? "cache" : "gut", w.time);

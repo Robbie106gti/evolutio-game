@@ -1,3 +1,4 @@
+import { grazePlant, worthBrowsing } from "./food-energy.ts";
 import { World } from "./sim.ts";
 import {
   RECOVERY,
@@ -84,6 +85,19 @@ assert(rejected, "Invalid reserves rejected");
 world.plants[0].energy = 0;
 world.plants[0].reserves = 0;
 world.plants[0].depletion = 100;
+const shrub = { ...world.plants.find(p => p.kind === "bush")!, energy: 10, health: 100 };
+const rootStock = PLANTS.bush.capacity * 0.12;
+const lastBite = grazePlant(shrub, "mouse", 30);
+assert(lastBite.removed === 10 - rootStock && shrub.energy === rootStock,
+  "A long feeding step leaves non-edible stems and buds");
+assert(!worthBrowsing(shrub, 1) && grazePlant(shrub, "bug", 1).eaten === 0,
+  "A second grazer cannot harvest the same stripped plant");
+shrub.energy = PLANTS.bush.capacity * 0.29;
+recoverPlant(shrub, 1, () => 1);
+assert(!worthBrowsing(shrub, 1), "New shoots remain too sparse to browse");
+shrub.energy = PLANTS.bush.capacity * 0.31;
+recoverPlant(shrub, 1, () => 1);
+assert(worthBrowsing(shrub, 60), "The patch becomes attractive again after regrowing");
 const restored = decodeSave(
   encodeSave({ world, rate: 1, paused: true, selected: 0 }),
 ).world;

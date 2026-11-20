@@ -82,6 +82,7 @@ export interface Genes {
 }
 
 export interface Animal {
+  antLoad?: { food: "carrion" | "dead plants" | "crop"; energy: number; source?: number; points?: import("./ant-trails.ts").TrailPoint[] };
   seedCargo?: { seed: Plant; mode: "cache" | "gut" | "attached"; pickedAt: number };
   nextStingAge?: number;
   sex?: "female" | "male";
@@ -91,6 +92,7 @@ export interface Animal {
     target?: number;
     rivalUntil?: number;
     mate?: number;
+    previousMate?: number;
     due?: number;
     isolatedSince?: number;
     transitionDue?: number;
@@ -122,6 +124,7 @@ export interface Animal {
   stungUntilAge?: number;
   web?: { x: number; z: number; expires: number; prey: number };
   natalDispersal?: boolean;
+  nextBloodMealAge?: number;
   lastPreyAt?: number;
   webScout?: { x: number; z: number; until: number; silk?: boolean; natal?: boolean };
   webHeldUntilAge?: number;
@@ -164,6 +167,7 @@ export interface Plant {
   deposit?: { time: number; owner?: number };
   reserves: number;
   depletion: number;
+  stripped?: boolean;
   expression: PlantExpression;
   variety: number;
   lastGrowthAt: number;

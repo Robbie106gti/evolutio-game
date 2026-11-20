@@ -67,6 +67,10 @@ export function decodeSave(raw: string): Session {
   const number = (x: unknown, min = 0, max = 1e12): x is number =>
     typeof x === "number" && Number.isFinite(x) && x >= min && x <= max;
   const id = (x: unknown) => number(x, 1) && Number.isInteger(x);
+  const trailPoints = (value: unknown) =>
+    Array.isArray(value) && value.length > 0 && value.length <= 64 &&
+    value.every(p => p && number(p.x, -WORLD_RADIUS - 2, WORLD_RADIUS + 2) &&
+      number(p.z, -WORLD_RADIUS - 2, WORLD_RADIUS + 2));
   const w = data?.world;
   if (
     ![
@@ -270,7 +274,7 @@ export function decodeSave(raw: string): Session {
     )
   )
     fail();
-  if (!Array.isArray(w.dens) || w.dens.length > 120) fail();
+  if (!Array.isArray(w.dens) || w.dens.length > 152) fail();
   if (
     !number(w.seed, 0, 4294967295) ||
     !id(w.nextId) ||
@@ -295,7 +299,11 @@ export function decodeSave(raw: string): Session {
       !id(d.owner) ||
       !number(d.x, -WORLD_RADIUS, WORLD_RADIUS) ||
       !number(d.z, -WORLD_RADIUS, WORLD_RADIUS) ||
-      !number(d.progress, 0, 1)
+      !number(d.progress, 0, 1) ||
+      (d.queen !== undefined && (!d.pantry || !id(d.queen) || d.queen >= w.nextId)) ||
+      (d.antTrail !== undefined && (!d.pantry || !d.antTrail || !id(d.antTrail.source) ||
+        !number(d.antTrail.expires) || !trailPoints(d.antTrail.points))) ||
+      (d.pantry !== undefined && (!d.pantry || (d.pantry.crop !== undefined && !number(d.pantry.crop)) || !number(d.pantry.carrion) || !number(d.pantry["dead plants"])))
     )
       fail();
     ids.add(d.id);
@@ -344,6 +352,7 @@ export function decodeSave(raw: string): Session {
         Array.isArray(r) ||
         (r.target !== undefined &&
           (!id(r.target) || r.target >= w.nextId || r.target === a.id)) ||
+        (r.previousMate !== undefined && (!id(r.previousMate) || r.previousMate >= w.nextId || r.previousMate === a.id)) ||
         (r.mate !== undefined &&
           (!id(r.mate) || r.mate >= w.nextId || r.mate === a.id)) ||
         (r.mate === undefined) !== (r.due === undefined) ||
@@ -357,6 +366,7 @@ export function decodeSave(raw: string): Session {
       a.reproductive = {
         target: r.target,
         mate: r.mate,
+        previousMate: r.previousMate,
         due: r.due,
         rivalUntil: r.rivalUntil,
         isolatedSince: r.isolatedSince,
@@ -568,6 +578,11 @@ export function decodeSave(raw: string): Session {
   if (!Array.isArray(w.seedBank)) fail();
   const carriedSeeds = [];
   for (const a of w.animals) {
+    if (a.nextBloodMealAge !== undefined && !number(a.nextBloodMealAge)) fail();
+    if (a.antLoad !== undefined && (a.species !== "ant" || !a.antLoad ||
+        !["carrion", "dead plants", "crop"].includes(a.antLoad.food) || !number(a.antLoad.energy) ||
+        (a.antLoad.source !== undefined && !id(a.antLoad.source)) ||
+        (a.antLoad.points !== undefined && !trailPoints(a.antLoad.points)))) fail();
     if (a.nextStingAge !== undefined && !number(a.nextStingAge)) fail();
     if (a.seedCargo === undefined) continue;
     if (!a.seedCargo || !["cache", "gut", "attached"].includes(a.seedCargo.mode) ||
@@ -590,6 +605,7 @@ export function decodeSave(raw: string): Session {
       p.reserves = reserve * 0.5;
       p.depletion = 0;
     }
+    if (p.stripped !== undefined && typeof p.stripped !== "boolean") fail();
     if (!number(p.reserves, 0, reserve) || !number(p.depletion)) fail();
   }
   if (data.version < 19)
@@ -745,7 +761,7 @@ export function decodeSave(raw: string): Session {
     (world as unknown as Record<string, unknown>)[key] = w[key];
   if (w.foodTotals !== undefined) {
     if (!w.foodTotals || typeof w.foodTotals !== "object" || Array.isArray(w.foodTotals)) fail();
-    const foods = new Set([...Object.keys(SPECIES), ...Object.keys(PLANTS), "worms", "mushrooms", "pond food", "dead plants", "carrion", "older catch"]);
+    const foods = new Set([...Object.keys(SPECIES), ...Object.keys(PLANTS), "worms", "mushrooms", "pond food", "dead plants", "carrion", "older catch", "eggs", "blood", "nectar", "fruit juice"]);
     for (const [species, diet] of Object.entries(w.foodTotals)) {
       if (!Object.hasOwn(SPECIES, species) || !diet || typeof diet !== "object" || Array.isArray(diet) ||
           !Object.entries(diet).every(([food, value]) => foods.has(food) && number(value))) fail();
@@ -758,6 +774,14 @@ export function decodeSave(raw: string): Session {
     world.evolution = createEvolutionArchive();
     world.evolution.since = world.time;
     recordEvolution(world);
+  }
+  // Older saves still record both parents of successful broods.
+  const mothers = new Map(world.animals.filter(a => (a.species === "ant" || a.species === "fly") &&
+    !a.reproductive?.previousMate).map(a => [a.id, a]));
+  for (const child of world.evolution.family) {
+    const mother = mothers.get(child.parent);
+    if (mother && child.otherParent && child.species === mother.species)
+      (mother.reproductive ??= {}).previousMate = child.otherParent;
   }
   if (data.version < 5) {
     const savedSeed = world.seed;

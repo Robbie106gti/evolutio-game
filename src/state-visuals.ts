@@ -20,6 +20,8 @@ const still = new Set([
   "Basking",
   "Drying on sunny rock",
   "Drying in shelter",
+  "Waiting at hill",
+  "Eating at hill",
   "Eating remains",
   "Eating mushrooms",
   "Foraging worms",
@@ -44,7 +46,7 @@ export function animalPose(a: Animal) {
   ].includes(a.state);
   const stalking = a.state === "Stalking";
   const sprinting = a.state === "Sprinting" || a.state === "Fleeing";
-  const moving = !still.has(a.state);
+  const moving = !still.has(a.state) || (a.species === "fish" && a.state === "Aquatic feeding");
   const frogHop =
     a.species === "frog" &&
     moving &&
@@ -111,7 +113,7 @@ export function plantLifeVisuals(p: Plant) {
     foliage:
       (woodyCanopy ? 1 - Math.max(aging * 0.38, damage * 0.28) : 1) * (0.08 +
       0.92 *
-        Math.min(1, Math.max(0, p.energy) / (PLANTS[p.kind].capacity * 0.45))),
+        Math.sqrt(Math.min(1, Math.max(0, p.energy) / (PLANTS[p.kind].capacity * 0.45)))),
     droop: p.kind === "tree" ? 1 : 1 - drought * 0.3 - flooding * 0.12,
   };
 }

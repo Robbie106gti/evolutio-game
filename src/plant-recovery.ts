@@ -11,6 +11,9 @@ export const RECOVERY = {
 export function recoverPlant(p: Plant, dt: number, random: () => number) {
   const profile = RECOVERY[p.kind],
     capacity = PLANTS[p.kind].capacity;
+  // Old islands can already contain bare plants when this rule first runs.
+  if (p.energy <= capacity * 0.12 && p.depletion > 0) p.stripped = true;
+  if (p.stripped && p.energy >= capacity * 0.3) delete p.stripped;
   if (p.energy < capacity * 0.15) {
     p.depletion += dt;
     const released = Math.min(p.reserves, dt * profile.release);

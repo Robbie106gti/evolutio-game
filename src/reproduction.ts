@@ -31,6 +31,7 @@ export function reproductiveSex(a: Pick<Animal, "id" | "sex">) {
 // Egg production costs the female 32 energy; the male contributes 6.
 export const courtshipEnergy = (a: Animal) =>
   isFlyingInsect(a.species) ? (reproductiveSex(a) === "female" ? 30 : 18)
+    : a.species === "ant" ? (reproductiveSex(a) === "female" ? 30 : 18)
     : isInsect(a.species) ? (reproductiveSex(a) === "female" ? 58 : 24)
     : a.species === "spider" ? (reproductiveSex(a) === "female" ? 60 : 42)
     : a.species === "scorpion" ? (reproductiveSex(a) === "female" ? 60 : 42) : 76;
@@ -105,7 +106,8 @@ export function stepReproduction(
   depthAt: (x: number, z: number) => number,
   neighborhoods?: MateNeighborhoods,
 ) {
-  const adults = reproductiveAdults(world.animals);
+  const queenHills = new Set(world.dens.filter(d => d.queen).map(d => d.id));
+  const adults = reproductiveAdults(world.animals).filter(a => a.species !== "ant" || !queenHills.has(a.home));
   const grid = neighborhoods ? undefined : new SpatialGrid(adults, 12);
   const adultById = neighborhoods
     ? new Map(adults.map((a) => [a.id, a]))
@@ -133,7 +135,7 @@ export function stepReproduction(
   const report = (event: string) => world.events.unshift(event);
   for (const a of pending) {
     const state = a.reproductive!;
-    if (state.due! > now || !safe(a) || a.energy < (isFlyingInsect(a.species) ? 14 : 32)) continue;
+    if (state.due! > now || !safe(a) || a.energy < (isFlyingInsect(a.species) || a.species === "ant" ? 14 : 32)) continue;
     // Birds return to their chosen nest before laying; keep gestation pending.
     if (a.species === "bird" && a.roost) {
       const tree = world.plants.find((p) => p.id === a.roost && p.health > 0);
@@ -151,7 +153,8 @@ export function stepReproduction(
     delete state.due;
     if (!mate) continue;
     if (usesMate(a.species) && modes[a.species] === "eggs") {
-      world.layClutch(a, Infinity, { mate });
+      world.layClutch(a, a.species === "ant" && a.energy < 45 ? Math.ceil(SPECIES.ant.clutchSize / 2) : Infinity, { mate });
+      if (a.species === "ant" || a.species === "fly") state.previousMate = mate.id;
       report(
         `${a.species[0].toUpperCase()}${a.species.slice(1)} #${a.id} laid eggs with parent #${mate.id}`,
       );
@@ -166,7 +169,7 @@ export function stepReproduction(
       );
     }
     // Pay the remaining reproductive investment only when young are delivered.
-    a.energy -= isFlyingInsect(a.species) ? 7 : 16;
+    a.energy -= isFlyingInsect(a.species) || a.species === "ant" ? 7 : 16;
     a.cooldown = isFlyingInsect(a.species) ? 12 : isInsect(a.species) ? 24 : a.species === "mouse" ? 40 : 60;
   }
 
@@ -184,6 +187,20 @@ export function stepReproduction(
       (!ready && a.reproductive?.isolatedSince === undefined)
     )
       continue;
+    // A previously inseminated female can provision another brood once
+    // her reserves recover. Use the actual father's inherited traits.
+    if (ready && a.reproductive?.previousMate && (a.species === "fly" || a.species === "ant")) {
+      const id = a.reproductive.previousMate;
+      const father = world.animals.find(b => b.id === id) ?? world.deceased.find(b => b.id === id);
+      if (father?.species === a.species) {
+        a.reproductive.mate = id;
+        // A returning fly can oviposit at its feeding substrate.
+        const onFood = a.state === "Eating remains" || a.state === "Eating";
+        a.reproductive.due = now + (a.species === "fly" && onFood ? 0.5 : 4);
+        a.energy -= 7;
+        continue;
+      }
+    }
     const near = neighborhoods
       ? (neighborhoods.get(a.id) ?? []).flatMap((id) => {
           const mate = adultById!.get(id);
@@ -287,7 +304,7 @@ export function stepReproduction(
     state.mate = closest.id;
     state.due =
       now + (isInsect(a.species) ? 4 : a.species === "mouse" ? 9 : 14);
-    a.energy -= isFlyingInsect(a.species) ? 7 : 16;
+    a.energy -= isFlyingInsect(a.species) || a.species === "ant" ? 7 : 16;
     closest.energy -= 6;
     closest.cooldown = isFlyingInsect(a.species) ? 6 : 18;
     a.state = closest.state = "Courting";

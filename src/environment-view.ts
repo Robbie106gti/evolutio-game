@@ -26,12 +26,12 @@ export class EnvironmentView {
   dens = new THREE.InstancedMesh(
     new THREE.CylinderGeometry(0.6, 1, 0.3, 12),
     new THREE.MeshStandardMaterial({ color: "#66503a", roughness: 1 }),
-    120,
+    152,
   );
   holes = new THREE.InstancedMesh(
     new THREE.CircleGeometry(0.4, 20),
     new THREE.MeshBasicMaterial({ color: "#302b23", side: THREE.DoubleSide }),
-    120,
+    152,
   );
   home = new THREE.Mesh(
     new THREE.RingGeometry(0.9, 1, 32),
@@ -420,11 +420,12 @@ export class EnvironmentView {
       );
       this.dummy.rotation.set(0, 0, 0);
       this.dummy.scale.setScalar(0.5 + d.progress * 0.5);
+      if (d.pantry) this.dummy.scale.set(0.8, 1 + d.progress * 2, 0.8);
       this.dummy.updateMatrix();
       this.dens.setMatrixAt(i, this.dummy.matrix);
       this.dummy.rotation.x = -Math.PI / 2;
       this.dummy.position.y =
-        terrainHeight(d.x, d.z, world.weather.land) + 0.25;
+        terrainHeight(d.x, d.z, world.weather.land) + (d.pantry ? 0.155 + d.progress * 0.38 : 0.25);
       this.dummy.scale.setScalar(d.progress);
       this.dummy.updateMatrix();
       this.holes.setMatrixAt(i, this.dummy.matrix);

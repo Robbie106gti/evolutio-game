@@ -39,6 +39,9 @@ export interface Pond {
   radius: number;
 }
 export interface Den {
+  queen?: number;
+  antTrail?: import("./ant-trails.ts").AntTrail;
+  pantry?: { crop?: number; carrion: number; "dead plants": number };
   id: number;
   owner: number;
   x: number;

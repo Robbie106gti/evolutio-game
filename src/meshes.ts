@@ -534,7 +534,7 @@ export class OrganismMeshes {
         a.state === "Drying on sunny rock" || a.state === "Drying in shelter"
           ? Math.sin(a.age * 18) * 0.045 * a.wetness
           : 0,
-        -feedingAngle,
+        -feedingAngle + (a.species === "crab" ? Math.PI / 2 : 0),
         care.feeding
           ? -0.12 - pulse * 0.18
           : care.begging
@@ -598,7 +598,7 @@ export class OrganismMeshes {
         for (const side of [-1, 1]) {
           for (let leg = 0; leg < 4; leg++) {
             const stride = pose.moving ? Math.sin(phase + leg * 2 + side) * 0.14 : 0;
-            part(limb, leg * 0.18 - 0.34 + stride, 0.18, side * 0.42 * tucked,
+            part(limb, leg * 0.18 - 0.34 + (crab ? 0 : stride), 0.18 + (crab ? Math.max(0, stride) * 0.4 : 0), side * 0.42 * tucked + (crab ? stride : 0),
               0.06, 0.06, 0.38 * tucked, dark, side * 0.34, side * (leg - 1.5) * 0.24);
           }
           if (crab || scorpion) part(round, 0.53, 0.3, side * 0.39, 0.26, 0.14, 0.14, light);
@@ -1264,6 +1264,9 @@ export class OrganismMeshes {
           );
       }
       // A visible mouthful shrinks with the parent's available food reserve.
+      if (a.antLoad)
+        part(angular, headX + 0.31, headY, 0, 0.33, 0.14, 0.2,
+          new THREE.Color(a.antLoad.food === "carrion" ? "#995e49" : "#a58446"));
       if (care.carrying > 0 || care.feeding) {
         const amount = Math.max(0.35, Math.min(1, care.carrying / 12));
         const mouth = headX + (a.species === "bird" ? 0.52 : 0.35);
@@ -1481,6 +1484,22 @@ export class OrganismMeshes {
         const tree = p.kind === "tree",
           grass = p.kind === "grass";
         const scale = p.size * (tree ? 2.2 : grass ? 0.4 : 0.7);
+        if (p.kind === "bush" && p.variety === 2) {
+          // Keep the rooted column as it dries and folds onto the sand.
+          // Old cacti may already have shed both arms before death.
+          const slump = THREE.MathUtils.smoothstep(p.decay, 0.12, 0.7);
+          const crumble = 1 - THREE.MathUtils.smoothstep(p.decay, 0.55, 1);
+          const cactus = this.plantVariants.bush[2];
+          this.dummy.position.set(p.x, y + scale * slump * crumble * 0.08, p.z);
+          this.dummy.rotation.set(0, p.id, slump * 1.48, "YXZ");
+          const width = scale * crumble * (0.78 - slump * 0.35);
+          this.dummy.scale.set(width, scale * crumble * (0.84 - slump * 0.22), width);
+          put(cactus, p.id);
+          cactus.setColorAt(cactus.count - 1, this.color.copy(this.dryPlantColor)
+            .lerp(this.weatheredCactus, 0.35 + 0.65 * slump));
+          this.dummy.rotation.order = "XYZ";
+          continue;
+        }
         const foliage = Math.max(0, 1 - p.decay * 4);
         if (foliage > 0) {
           this.dummy.position.set(p.x, y, p.z);

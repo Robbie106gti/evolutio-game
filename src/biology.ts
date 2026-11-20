@@ -1,5 +1,5 @@
 import type { Animal, Species } from "./model.ts";
-import { isInsect, SPECIES, BURST_HUNTERS, LIFE_HISTORY } from "./species.ts";
+import { isFlyingInsect, isInsect, SPECIES, BURST_HUNTERS, LIFE_HISTORY } from "./species.ts";
 export const huntsAnimals = (a: Animal) =>
   a.species === "mouse"
     ? a.genes.dietAffinity >= 0.3
@@ -7,11 +7,24 @@ export const huntsAnimals = (a: Animal) =>
 
 export const canHunt = (predator: Animal, prey: Animal) => {
   if (prey.webOwnerId && prey.webOwnerId !== predator.id && (prey.webHeldUntilAge ?? 0) > prey.age) return false;
-  if (prey.altitude > 0.6 && predator.species !== "bird") return false;
+  if (prey.altitude > 0.6 && predator.species !== "bird") {
+    // Tongues and stings can reach insects hovering close to the ground.
+    if ((predator.species !== "scorpion" && predator.species !== "frog") || !isFlyingInsect(prey.species) ||
+        prey.altitude > 1 || Math.hypot(prey.x - predator.x, prey.z - predator.z) > 0.9) return false;
+  }
+  if (prey.species === "spider" && (predator.species === "frog" ||
+      (predator.species === "bird" && predator.birdDiet === "insectivore")))
+    return grownBodySize(prey) <= grownBodySize(predator) * 0.75;
   const smallVertebrate = prey.species === "mouse" || prey.species === "bird";
   if ((predator.species === "spider" && smallVertebrate) ||
       (predator.species === "scorpion" && (smallVertebrate || prey.species === "frog" || prey.species === "snake" || prey.species === "crab")))
     return grownBodySize(prey) <= grownBodySize(predator) * 0.85;
+  if (prey.species === "turtle") {
+    if (!SPECIES[predator.species].prey.includes("turtle")) return false;
+    const stage = lifeStage(prey);
+    const vulnerable = stage === "Baby" || (stage === "Juvenile" && predator.species !== "cat");
+    return vulnerable && grownBodySize(prey) <= grownBodySize(predator) * 0.65;
+  }
   if (prey.species === "crocodile")
     return lifeStage(prey) === "Baby" &&
       (predator.species === "cat" || predator.species === "fox" ||
@@ -41,6 +54,7 @@ export const canHunt = (predator: Animal, prey: Animal) => {
 
 export function canHuntAt(predator: Animal, prey: Animal, depthAt: (x: number, z: number) => number) {
   if (!canHunt(predator, prey)) return false;
+  if (prey.species === "turtle") return depthAt(prey.x, prey.z) <= 0.2;
   if (predator.species === "scorpion" && depthAt(prey.x, prey.z) > 0.15) return false;
   if (prey.species === "crocodile")
     return depthAt(prey.x, prey.z) <= (predator.species === "bird" ? 0.4 : 0.2);

@@ -90,10 +90,12 @@ export function reconcileDens(animals: Animal[], dens: Den[], eggs: Egg[]) {
   for (const a of animals) {
     if (!a.home || a.nursery || nursing.has(a.id)) continue;
     const den = byDen.get(a.home);
+    if (a.species === "ant" && den?.pantry) continue;
     if (!den || (a.age >= maturityAge(a) && den.owner !== a.id)) a.home = 0;
   }
   for (const a of animals)
     if (!a.nursery && a.age < maturityAge(a) && a.home) {
+      if (a.species === "ant" && byDen.get(a.home)?.pantry) continue;
       const parent = byId.get(a.parent);
       a.home = parent?.home ?? 0;
     }

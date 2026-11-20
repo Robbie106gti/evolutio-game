@@ -34,3 +34,14 @@ console.log(
 function check(condition: boolean) {
   if (!condition) throw new Error('Food resource regression');
 }
+import { crabShoreTarget, turnFromBank } from "./shore-movement.ts";
+import { initialPonds } from "./ecology.ts";
+
+const bankDepth = (x: number) => Math.max(0, 1 - x);
+const fish = { x: 0.8, z: 0 };
+const heading = turnFromBank(fish, 0, bankDepth, 1);
+check(bankDepth(fish.x + Math.cos(heading)) > bankDepth(fish.x));
+check(turnFromBank({ x: -5, z: 0 }, 0.2, bankDepth, 1) === 0.2);
+const pools = initialPonds();
+check(!!crabShoreTarget({ x: -45, z: -35 }, pools, () => 0));
+check(!crabShoreTarget(fish, pools, bankDepth));
