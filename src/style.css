@@ -657,7 +657,7 @@ dialog p {
   width: 340px;
 }
 #inspect.compact
-  > :not(.close):not(#animal-summary):not(#animal-camera):not(#animal-life) {
+  > :not(.close):not(#animal-summary):not(#species-navigation):not(#animal-camera):not(#animal-life) {
   display: none;
 }
 #inspect {

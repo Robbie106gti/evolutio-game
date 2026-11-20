@@ -215,6 +215,7 @@ export function camouflage(a: Animal, terrain: ReturnType<typeof habitat>) {
     fox: 0.065,
     wolf: 0.12,
     spider: 0.18, scorpion: 0.12, crab: 0.08,
+    mosquito: 0.12, fly: 0.55, ant: 0.04,
     bug: 0.29,
     bird: a.birdDiet === "raptor" ? 0.08 : 0.57,
     snake: 0.22,

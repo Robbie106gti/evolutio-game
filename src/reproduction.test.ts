@@ -221,7 +221,8 @@ for (const species of Object.keys(SPECIES) as Species[]) {
   );
   assert.ok(young.length > 0);
   assert.ok(young.every((c) => c.otherParent === b.id));
-  assert.ok(a.energy <= 93); // At least 32 energy; buried eggs also cost digging energy.
+  const investment = species === "mosquito" || species === "fly" ? 14 : 32;
+  assert.ok(a.energy <= 125 - investment); // Buried eggs can cost additional digging energy.
 }
 
 const hungryPair = island();

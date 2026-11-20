@@ -1,7 +1,7 @@
 import { canReproduce } from "./biology.ts";
 import type { Animal, Genes, Species } from "./model.ts";
 import { treeRestSite } from "./resting.ts";
-import { SPECIES } from "./species.ts";
+import { isFlyingInsect, isInsect, SPECIES } from "./species.ts";
 import { SpatialGrid } from "./terrain.ts";
 import type { World } from "./sim.ts";
 
@@ -11,7 +11,7 @@ const modes = {
   cat: "litter",
   wolf: "litter",
   spider: "eggs", scorpion: "litter", crab: "eggs",
-    bug: "eggs",
+  bug: "eggs", ant: "eggs", fly: "eggs", mosquito: "eggs",
   bird: "eggs",
   crocodile: "eggs",
   frog: "eggs",
@@ -30,8 +30,10 @@ export function reproductiveSex(a: Pick<Animal, "id" | "sex">) {
 
 // Egg production costs the female 32 energy; the male contributes 6.
 export const courtshipEnergy = (a: Animal) =>
-  a.species === "bug" ? (reproductiveSex(a) === "female" ? 58 : 24)
-    : a.species === "scorpion" && reproductiveSex(a) === "male" ? 42 : 76;
+  isFlyingInsect(a.species) ? (reproductiveSex(a) === "female" ? 30 : 18)
+    : isInsect(a.species) ? (reproductiveSex(a) === "female" ? 58 : 24)
+    : a.species === "spider" ? (reproductiveSex(a) === "female" ? 60 : 42)
+    : a.species === "scorpion" ? (reproductiveSex(a) === "female" ? 60 : 42) : 76;
 
 export function mixGenes(
   first: Genes,
@@ -57,7 +59,7 @@ export type MateNeighborhoods = Map<number, number[]>;
 const distance = (a: MatePosition, b: MatePosition) =>
   Math.hypot(a.x - b.x, a.z - b.z);
 function nearbyMates<T extends MatePosition>(grid: SpatialGrid<T>, a: T) {
-  const range = a.species === "fish" ? 12 : a.species === "bug" ? 32 : a.species === "scorpion" ? 40 : 20;
+  const range = a.species === "fish" ? 12 : isFlyingInsect(a.species) ? 55 : isInsect(a.species) ? 32 : a.species === "scorpion" ? 40 : 20;
   return grid
     .near(a.x, a.z, range)
     .filter(
@@ -131,7 +133,7 @@ export function stepReproduction(
   const report = (event: string) => world.events.unshift(event);
   for (const a of pending) {
     const state = a.reproductive!;
-    if (state.due! > now || !safe(a) || a.energy < 32) continue;
+    if (state.due! > now || !safe(a) || a.energy < (isFlyingInsect(a.species) ? 14 : 32)) continue;
     // Birds return to their chosen nest before laying; keep gestation pending.
     if (a.species === "bird" && a.roost) {
       const tree = world.plants.find((p) => p.id === a.roost && p.health > 0);
@@ -164,8 +166,8 @@ export function stepReproduction(
       );
     }
     // Pay the remaining reproductive investment only when young are delivered.
-    a.energy -= 16;
-    a.cooldown = a.species === "bug" ? 24 : a.species === "mouse" ? 40 : 60;
+    a.energy -= isFlyingInsect(a.species) ? 7 : 16;
+    a.cooldown = isFlyingInsect(a.species) ? 12 : isInsect(a.species) ? 24 : a.species === "mouse" ? 40 : 60;
   }
 
   const receptive = (a: Animal) =>
@@ -278,16 +280,16 @@ export function stepReproduction(
     }
     (closest.reproductive ??= {}).target = a.id;
     if (distance(a, closest) > 2) {
-      if (a.species === "bug" || a.species === "scorpion") (a.reproductive ??= {}).target = closest.id;
+      if (isInsect(a.species) || a.species === "scorpion") (a.reproductive ??= {}).target = closest.id;
       continue;
     }
     const state = (a.reproductive ??= {});
     state.mate = closest.id;
     state.due =
-      now + (a.species === "bug" ? 4 : a.species === "mouse" ? 9 : 14);
-    a.energy -= 16;
+      now + (isInsect(a.species) ? 4 : a.species === "mouse" ? 9 : 14);
+    a.energy -= isFlyingInsect(a.species) ? 7 : 16;
     closest.energy -= 6;
-    closest.cooldown = 18;
+    closest.cooldown = isFlyingInsect(a.species) ? 6 : 18;
     a.state = closest.state = "Courting";
     report(
       `${a.species[0].toUpperCase()}${a.species.slice(1)} #${a.id} paired with #${closest.id}`,

@@ -1,4 +1,5 @@
-import { ingest, mealYield } from "./food-energy.ts";
+import { collectSeed, dropSeed } from "./seed-dispersal.ts";
+import { grazePlant, ingest, mealYield } from "./food-energy.ts";
 import type { World } from "./sim.ts";
 import type { Animal, Plant } from "./model.ts";
 import {
@@ -110,6 +111,7 @@ export function stepApproximateAnimals(
       climates.set(i, c);
     }
     a.age += dt;
+    if (a.seedCargo) dropSeed(w.seedBank, a, w.time, depthAt(a.x, a.z));
     a.cooldown -= dt;
     a.nextSenseAt = 0;
     a.sensedTarget = 0;
@@ -283,7 +285,7 @@ export function stepApproximateAnimals(
             dt * (5 + g.aggression * 12) * g.size,
           );
           prey.energy -= bite;
-          ingest(w.foodTotals, a, prey.species, bite / 140 * mealYield(prey) * preyEfficiency(a));
+          ingest(w.foodTotals, a, prey.species, bite / 140 * mealYield(prey, a) * preyEfficiency(a));
           if (prey.species === "bug" && bite > 0) a.hasEatenBug = true;
           if (prey.energy <= 0) {
             prey.deathCause = "predation";
@@ -296,18 +298,16 @@ export function stepApproximateAnimals(
       if (!ate && eatsPlants(a) && patch.plants.length) {
         const p = sample(patch.plants);
         if (p.health > 0 && p.energy > 0 && depthAt(p.x, p.z) < 0.15) {
-          const bite = Math.min(
-            p.energy,
-            (dt * (a.species === "bug" ? 18 : 9)) / (1 + p.defense * 4),
-          );
-          p.energy -= bite;
+          const { removed, eaten: bite } = grazePlant(p, a.species, dt);
+          if (bite > 0 && !a.seedCargo && w.random() < encounterProbability(0.25, dt))
+            collectSeed(w.seedBank, a, p, a.species === "mouse" && a.energy >= 55 ? "cache" : "gut", w.time);
           ingest(w.foodTotals, a, p.kind, bite *
             PLANTS[p.kind].nutrition *
             plantEfficiency(a) *
             (a.species === "bug" ? 0.55 : 1));
           a.hydration = Math.min(100, a.hydration + bite * 0.3);
           if (a.species === "bug")
-            soil.litter = clamp(soil.litter + bite * 0.008, 0, 1);
+            soil.litter = clamp(soil.litter + removed * 0.008, 0, 1);
           ate = bite > 0;
           a.state = "Eating";
         }

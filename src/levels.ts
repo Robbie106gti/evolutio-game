@@ -104,7 +104,7 @@ export const SANDBOX = defineLevel({
       ["fox", 4],
       ["wolf", 3],
       ["mouse", 50],
-      ["bug", 60],
+      ["bug", 42], ["mosquito", 6], ["fly", 6], ["ant", 6],
       ["bird", 18],
       ["cat", 8],
       ["snake", 10],

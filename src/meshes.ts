@@ -20,7 +20,7 @@ import {
   type PlantKind,
   type PlantRemains,
 } from "./model.ts";
-import { PLANTS, SPECIES } from "./species.ts";
+import { isInsect, PLANTS, SPECIES } from "./species.ts";
 import { growthScale, lifeStage } from "./biology.ts";
 
 // Shared geometry batches all animal parts into three instanced draw calls.
@@ -667,7 +667,7 @@ export class OrganismMeshes {
             Math.PI / 2,
           );
           eye(-0.23, 0.45, 0.31);
-        } else if (a.species === "bug") {
+        } else if (isInsect(a.species)) {
           part(round, 0, 0.18, 0, 0.48 * g.length, 0.2 * breath, 0.3, coat);
           part(round, 0.35, 0.14, 0, 0.2, 0.15, 0.2, light);
           for (let j = 0; j < 3; j++)
@@ -836,7 +836,7 @@ export class OrganismMeshes {
             );
         }
       } else {
-        const bug = a.species === "bug",
+        const bug = isInsect(a.species),
           bird = a.species === "bird";
         const height = bug ? 0.3 : 0.3 + 0.22 * g.limbs;
         headY = height + 0.19 - pose.headDip;
@@ -860,6 +860,15 @@ export class OrganismMeshes {
           0.25 * look.head,
           light,
         );
+        if (a.species === "fly" || a.species === "mosquito") {
+          for (const side of [-1, 1])
+            part(round, -0.12, height + 0.24, side * 0.33, 0.42, 0.025, 0.17,
+              light, side * Math.sin(a.age * 35) * 0.5);
+          if (a.species === "mosquito")
+            part(limb, headX + 0.34, headY, 0, 0.3, 0.018, 0.018, dark);
+        } else if (a.species === "ant") {
+          part(round, -0.65 * g.length, height, 0, 0.32, 0.24, 0.24, dark);
+        }
         if (bug) {
           for (const side of [-1, 1])
             part(

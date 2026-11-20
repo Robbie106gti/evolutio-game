@@ -22,7 +22,7 @@ export const POPULATION_SERIES = [
 ] as const;
 // Categories describe the game's available food sources, not real-world taxonomy.
 export function dietGroup(a: Animal): DietGroup {
-  if (a.species === "bug") return "detritivores";
+  if (a.species === "fly" || a.species === "ant" || a.species === "bug") return "detritivores";
   if (a.species === "mouse")
     return a.genes.dietAffinity < 0.3
       ? "herbivores"

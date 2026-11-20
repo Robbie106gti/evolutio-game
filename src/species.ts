@@ -12,6 +12,10 @@ export const DEATH_LABELS: Record<DeathCause, string> = {
   stranding: "Stranded out of water",
 };
 
+export const isFlyingInsect = (species: Species) => species === "mosquito" || species === "fly";
+export const isInsect = (species: Species) =>
+  species === "bug" || species === "ant" || species === "fly" || species === "mosquito";
+
 export const SPECIES = freezeProfile({
   fox: defineAnimal("mammal", {
     label: "Fox",
@@ -84,7 +88,7 @@ export const SPECIES = freezeProfile({
     label: "Frog",
     kind: "hunter",
     plants: false,
-    prey: ["bug"] as Species[],
+    prey: ["bug", "fly", "mosquito", "ant"] as Species[],
     speed: 1.1,
     size: 0.65,
     hue: 0.3,
@@ -120,19 +124,34 @@ export const SPECIES = freezeProfile({
     incubation: 0,
   }),
   spider: defineAnimal("arachnid", {
-    label: "Spider", kind: "hunter", plants: false, prey: ["bug", "mouse", "bird"], speed: 0.85,
+    label: "Spider", kind: "hunter", plants: false, prey: ["fly", "mosquito", "ant", "bug", "mouse", "bird"], speed: 0.85,
     size: 0.45, hue: 0.07, diet: "Bugs, small grounded mice and birds, exposed worms", gait: "Eight-legged stalk",
     clutchSize: 120, incubation: 24,
   }),
   scorpion: defineAnimal("arachnid", {
-    label: "Scorpion", kind: "hunter", plants: false, prey: ["bug", "spider", "mouse", "bird", "frog"], speed: 0.65,
-    size: 0.58, hue: 0.11, diet: "Bugs, spiders, worms and small grounded vertebrates", gait: "Night prowl",
+    label: "Scorpion", kind: "hunter", plants: false, prey: ["fly", "mosquito", "ant", "bug", "spider", "mouse", "bird", "frog", "snake", "crab"], speed: 0.65,
+    size: 0.58, hue: 0.11, diet: "Bugs, spiders, worms, small crabs and small grounded mice, frogs, birds or snakes", gait: "Night prowl",
     clutchSize: 3, incubation: 0, capabilities: { reproduction: "live" },
   }),
   crab: defineAnimal("crustacean", {
-    label: "Crab", kind: "hunter", plants: false, prey: ["bug"], speed: 0.65,
+    label: "Crab", kind: "hunter", plants: false, prey: ["bug", "fly", "mosquito", "ant"], speed: 0.65,
     size: 0.72, hue: 0.035, diet: "Remains and insects", gait: "Shore scavenger",
     clutchSize: 6, incubation: 30,
+  }),
+  mosquito: defineAnimal("insect", {
+    label: "Mosquito", kind: "grazer", plants: true, prey: [], speed: 1.05,
+    size: 0.32, hue: 0.12, diet: "Wildflowers and mature berry bushes", gait: "Hover",
+    clutchSize: 48, incubation: 15, capabilities: { flies: true },
+  }),
+  fly: defineAnimal("insect", {
+    label: "Fly", kind: "grazer", plants: true, prey: [], speed: 1.15,
+    size: 0.4, hue: 0.55, diet: "Wildflowers, berry bushes, carrion and dead plants", gait: "Flit / land",
+    clutchSize: 42, incubation: 12, capabilities: { flies: true },
+  }),
+  ant: defineAnimal("insect", {
+    label: "Ant", kind: "grazer", plants: true, prey: [], speed: 0.85,
+    size: 0.36, hue: 0.04, diet: "Plants, remains and mushrooms", gait: "Scurry",
+    clutchSize: 30, incubation: 20,
   }),
   bug: defineAnimal("insect", {
     label: "Bug",
@@ -151,7 +170,7 @@ export const SPECIES = freezeProfile({
     label: "Bird",
     kind: "hunter",
     plants: true,
-    prey: ["bug"] as Species[],
+    prey: ["bug", "fly", "mosquito", "ant"] as Species[],
     speed: 1.1,
     size: 0.85,
     hue: 0.57,
@@ -164,7 +183,7 @@ export const SPECIES = freezeProfile({
     label: "Snake",
     kind: "hunter",
     plants: false,
-    prey: ["mouse", "bug"] as Species[],
+    prey: ["mouse", "bug", "fly", "mosquito", "ant"] as Species[],
     speed: 1.3,
     size: 0.9,
     hue: 0.22,
@@ -251,6 +270,9 @@ export const LIFE_HISTORY: Record<
   fox: { maturity: 30, lifespan: 800 },
   wolf: { maturity: 45, lifespan: 1100 },
   spider: { maturity: 14, lifespan: 230 }, scorpion: { maturity: 45, lifespan: 640 }, crab: { maturity: 30, lifespan: 480 },
+  mosquito: { maturity: 5, lifespan: 90 },
+  fly: { maturity: 5, lifespan: 105 },
+  ant: { maturity: 9, lifespan: 180 },
   bug: { maturity: 6, lifespan: 160 },
   bird: { maturity: 20, lifespan: 650 },
   snake: { maturity: 40, lifespan: 1100 },
@@ -264,6 +286,7 @@ function plantVariants(kind: keyof typeof PLANTS) {
   return PLANT_VARIETIES[kind].map((label, variety) =>
     freezeProfile({
       ...PLANTS[kind],
+      lifespan: kind === "bush" && variety === 2 ? 900 : PLANTS[kind].lifespan,
       label,
       variety,
       desertAdapted: variety === 2 && kind !== "grass",

@@ -1,5 +1,5 @@
 import type { Animal, Plant } from "./model.ts";
-import { PLANTS } from "./species.ts";
+import { PLANTS, PLANT_PROFILES } from "./species.ts";
 const still = new Set([
   "Eating",
   "Resting",
@@ -94,7 +94,7 @@ export function plantLifeVisuals(p: Plant) {
     ? 0.18 + 0.82 * maturity
     : 0.22 + 0.78 * Math.sqrt(maturity);
   const damage = 1 - Math.max(0, Math.min(1, p.health / 100));
-  const lifespanFraction = p.age * (0.6 + p.growth * 0.3) / PLANTS[p.kind].lifespan;
+  const lifespanFraction = p.age * (0.6 + p.growth * 0.3) / PLANT_PROFILES[p.kind][p.variety].lifespan;
   const aging = Math.max(0, Math.min(1, (lifespanFraction - 0.68) / 0.32));
   const woodyCanopy = !herb && !(p.kind === "bush" && p.variety === 2);
   const drought = p.expression.droughtTolerance * (0.2 + damage * 0.8);

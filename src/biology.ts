@@ -1,5 +1,5 @@
 import type { Animal, Species } from "./model.ts";
-import { SPECIES, BURST_HUNTERS, LIFE_HISTORY } from "./species.ts";
+import { isInsect, SPECIES, BURST_HUNTERS, LIFE_HISTORY } from "./species.ts";
 export const huntsAnimals = (a: Animal) =>
   a.species === "mouse"
     ? a.genes.dietAffinity >= 0.3
@@ -10,7 +10,7 @@ export const canHunt = (predator: Animal, prey: Animal) => {
   if (prey.altitude > 0.6 && predator.species !== "bird") return false;
   const smallVertebrate = prey.species === "mouse" || prey.species === "bird";
   if ((predator.species === "spider" && smallVertebrate) ||
-      (predator.species === "scorpion" && (smallVertebrate || prey.species === "frog")))
+      (predator.species === "scorpion" && (smallVertebrate || prey.species === "frog" || prey.species === "snake" || prey.species === "crab")))
     return grownBodySize(prey) <= grownBodySize(predator) * 0.85;
   if (prey.species === "crocodile")
     return lifeStage(prey) === "Baby" &&
@@ -26,7 +26,7 @@ export const canHunt = (predator: Animal, prey: Animal) => {
       return false;
     return (
       predator.genes.dietAffinity >= 0.3 &&
-      (prey.species === "bug" ||
+      (isInsect(prey.species) ||
         (predator.genes.dietAffinity >= 0.65 &&
           prey.species === "mouse" &&
           predator.genes.size > prey.genes.size * 1.35))
@@ -35,7 +35,7 @@ export const canHunt = (predator: Animal, prey: Animal) => {
   if (predator.species === "bird")
     return predator.birdDiet === "raptor"
       ? prey.species === "mouse" || prey.species === "fish"
-      : prey.species === "bug" || prey.species === "spider";
+      : isInsect(prey.species) || prey.species === "spider";
   return SPECIES[predator.species].prey.includes(prey.species);
 };
 

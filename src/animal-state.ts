@@ -40,6 +40,7 @@ export const ANIMAL_STATES = [
   "Waiting in ambush",
   "Sprinting",
   "Searching for prey",
+  "Ballooning on silk",
   "Seeking crossing",
   "Crossing river",
   "Drying on sunny rock",

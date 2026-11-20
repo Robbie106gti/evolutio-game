@@ -859,8 +859,12 @@ $("inspect").addEventListener("click", (e) => {
     updateUI();
   }
   if (button.dataset.animal) {
-    selected = Number(button.dataset.animal);
+    const id = Number(button.dataset.animal);
+    if (button.dataset.peer && !world.animals.some(a => a.id === id)) { updateUI(); return; }
+    selected = id;
     updateUI();
+    if (button.dataset.peer)
+      $("inspect").querySelector<HTMLButtonElement>('[data-peer="' + button.dataset.peer + '"]')?.focus({ preventScroll: true });
   }
   if (button.hasAttribute("data-toggle-follow")) {
     followEnabled = !followEnabled;

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { World } from "./sim.ts";
 import { OrganismMeshes } from "./meshes.ts";
-import { SPECIES, PLANTS, PLANT_PROFILES } from "./species.ts";
+import { SPECIES, PLANT_PROFILES } from "./species.ts";
 import { terrainHeight } from "./terrain.ts";
 import type { Animal, Plant, PlantKind, Species } from "./model.ts";
 
@@ -109,7 +109,7 @@ function frame(now: number) {
       : (pose.value as Animal["state"]);
   }
   if (plant) {
-    const profile = PLANTS[plant.kind];
+    const profile = PLANT_PROFILES[plant.kind][plant.variety];
     const progress = Math.min(1, (time % 14) / 12);
     plant.age =
       pose.value === "Growing"

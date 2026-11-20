@@ -23,6 +23,9 @@ export type Species =
   | "spider"
   | "scorpion"
   | "crab"
+  | "mosquito"
+  | "fly"
+  | "ant"
   | "bug"
   | "bird"
   | "snake"
@@ -79,6 +82,8 @@ export interface Genes {
 }
 
 export interface Animal {
+  seedCargo?: { seed: Plant; mode: "cache" | "gut" | "attached"; pickedAt: number };
+  nextStingAge?: number;
   sex?: "female" | "male";
   otherParent?: number;
   cloned?: true;
@@ -116,6 +121,9 @@ export interface Animal {
   mealSpecies?: Species;
   stungUntilAge?: number;
   web?: { x: number; z: number; expires: number; prey: number };
+  natalDispersal?: boolean;
+  lastPreyAt?: number;
+  webScout?: { x: number; z: number; until: number; silk?: boolean; natal?: boolean };
   webHeldUntilAge?: number;
   webOwnerId?: number;
   walkTrail?: { tile: number; time: number }[];
@@ -153,6 +161,7 @@ export interface Animal {
 }
 
 export interface Plant {
+  deposit?: { time: number; owner?: number };
   reserves: number;
   depletion: number;
   expression: PlantExpression;

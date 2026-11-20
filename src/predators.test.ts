@@ -80,6 +80,22 @@ assert(caughtBug.killedBy === sting.predator.id && sting.predator.mealEnergy > 0
 assert(!sting.world.foodTotals.scorpion?.bug, "Sting damage does not also award a meal");
 sting.world.step(0.1);
 assert((sting.world.foodTotals.scorpion?.bug ?? 0) > 0, "Scorpion eats the retained catch before foraging for worms");
+const lunge = setup("scorpion");
+const distantBug = lunge.world.addAnimal("grazer", undefined, "bug");
+Object.assign(distantBug, { x: lunge.predator.x + 2.6, z: lunge.predator.z, age: 30, energy: 40 });
+const launchX = lunge.predator.x;
+lunge.world.step(0.1);
+assert(lunge.predator.state === "Sprinting" && lunge.predator.x > launchX &&
+  !lunge.predator.nextStingAge && !distantBug.stungUntilAge,
+  "Scorpion launches toward visible prey outside sting reach and must close the gap");
+const missed = setup("scorpion");
+const escaping = missed.world.addAnimal("grazer", undefined, "ant");
+Object.assign(escaping, { x: missed.predator.x + 0.3, z: missed.predator.z, age: 30, energy: 40 });
+missed.world.random = () => 0.99;
+missed.world.step(0.1);
+assert((missed.predator.nextStingAge ?? 0) > missed.predator.age &&
+  escaping.energy > 39 && !escaping.stungUntilAge && !escaping.killedBy,
+  "A missed sting leaves the ant mobile while the scorpion recovers");
 const hunt = setup("fox");
 const victim = hunt.world.addAnimal("grazer", undefined, "mouse");
 victim.x = hunt.predator.x + 0.4;
@@ -268,3 +284,23 @@ for (const [visit, approach] of [[1, -32], [2, -34], [3, -32]]) {
   assert(routeCell.approachCount === (visit === 3 ? 2 : 0), "Only distinct visits over a shared tile establish a route");
 }
 assert(routeCell.approachX === -32, "The busiest actual approach wins");
+const drifting = setup("spider");
+drifting.world.time = 30;
+drifting.world.weather.cloud = 0.05;
+Object.assign(drifting.predator, { energy: 68, wetness: 0, lastPreyAt: 0, stamina: 100 });
+drifting.predator.genes.size = 0.6;
+drifting.world.step(0.1);
+assert(drifting.predator.state === "Ballooning on silk" && drifting.predator.altitude > 0,
+  "A light spider can leave a quiet site on the wind");
+assert(drifting.predator.x > -30 && drifting.predator.z < 25, "Silk drifts with the weather front");
+const brood = setup("spider");
+brood.world.time = 30;
+brood.world.weather.cloud = 0.05;
+Object.assign(brood.predator, { age: 2, natalDispersal: true, energy: 30, wetness: 0, stamina: 100, lastPreyAt: 30 });
+brood.world.step(0.1);
+assert(brood.predator.webScout?.natal && !brood.predator.natalDispersal && brood.predator.altitude > 0,
+  "Spiderlings launch before their first unproductive ambush");
+for (let i = 0; i < 120; i++) brood.world.step(0.1);
+assert(!brood.predator.webScout?.natal && brood.predator.altitude === 0 &&
+  Math.hypot(brood.predator.x + 30, brood.predator.z - 25) > 6,
+  "Dispersing spiderlings land away from the brood");

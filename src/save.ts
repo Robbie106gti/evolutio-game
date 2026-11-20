@@ -445,6 +445,12 @@ export function decodeSave(raw: string): Session {
       (a.mealSpecies !== undefined && !Object.hasOwn(SPECIES, a.mealSpecies)) ||
       (a.web !== undefined && (!a.web || a.species !== "spider" || !number(a.web.x, -WORLD_RADIUS, WORLD_RADIUS) ||
         !number(a.web.z, -WORLD_RADIUS, WORLD_RADIUS) || !number(a.web.expires) || !Number.isInteger(a.web.prey) || a.web.prey < 0)) ||
+      (a.natalDispersal !== undefined && typeof a.natalDispersal !== "boolean") ||
+      (a.lastPreyAt !== undefined && !number(a.lastPreyAt)) ||
+      (a.webScout !== undefined && (!a.webScout || a.species !== "spider" ||
+        !number(a.webScout.x, -WORLD_RADIUS, WORLD_RADIUS) || !number(a.webScout.z, -WORLD_RADIUS, WORLD_RADIUS) ||
+        !number(a.webScout.until) || (a.webScout.natal !== undefined && typeof a.webScout.natal !== "boolean") ||
+        (a.webScout.silk !== undefined && typeof a.webScout.silk !== "boolean"))) ||
       (a.webHeldUntilAge !== undefined && !number(a.webHeldUntilAge)) ||
       (a.walkTrail !== undefined && (!Array.isArray(a.walkTrail) || a.walkTrail.length > 12 ||
         !a.walkTrail.every((s: any) => s && Number.isInteger(s.tile) && number(s.tile, 0, 65535) && number(s.time)))) ||
@@ -560,7 +566,15 @@ export function decodeSave(raw: string): Session {
       fail();
   }
   if (!Array.isArray(w.seedBank)) fail();
-  for (const p of [...w.plants, ...w.seedBank]) {
+  const carriedSeeds = [];
+  for (const a of w.animals) {
+    if (a.nextStingAge !== undefined && !number(a.nextStingAge)) fail();
+    if (a.seedCargo === undefined) continue;
+    if (!a.seedCargo || !["cache", "gut", "attached"].includes(a.seedCargo.mode) ||
+        !number(a.seedCargo.pickedAt) || !a.seedCargo.seed) fail();
+    carriedSeeds.push(a.seedCargo.seed);
+  }
+  for (const p of [...w.plants, ...w.seedBank, ...carriedSeeds]) {
     if (!p) fail();
     if (data.version < 30) p.expression = plantExpressionMarks();
     if (
@@ -569,7 +583,7 @@ export function decodeSave(raw: string): Session {
     )
       fail();
   }
-  for (const p of [...w.plants, ...w.seedBank]) {
+  for (const p of [...w.plants, ...w.seedBank, ...carriedSeeds]) {
     if (!Object.hasOwn(RECOVERY, p.kind)) fail();
     const reserve = RECOVERY[p.kind as keyof typeof RECOVERY].reserve;
     if (data.version < 33) {
@@ -634,10 +648,11 @@ export function decodeSave(raw: string): Session {
   if (
     !Array.isArray(w.seedBank) ||
     w.seedBank.length > 240 ||
-    !w.seedBank.every(
+    ![...w.seedBank, ...carriedSeeds].every(
       (p: any) =>
         p &&
         id(p.id) &&
+        (p.deposit === undefined || (p.deposit && number(p.deposit.time) && (p.deposit.owner === undefined || id(p.deposit.owner)))) &&
         number(p.variety, 0, 2) &&
         Number.isInteger(p.variety) &&
         Object.hasOwn(PLANTS, p.kind) &&

@@ -1,4 +1,4 @@
-import { disperseSeed, storeDormantSeed } from "./seed-dispersal.ts";
+import { disperseSeed, storeDormantSeed, collectSeed, dropSeed } from "./seed-dispersal.ts";
 import { World } from "./sim.ts";
 const assert = (value: unknown, message: string) => {
   if (!value) throw new Error(message);
@@ -41,3 +41,15 @@ assert(
   !storeDormantSeed(bank, grass),
   "Abundant grass cannot displace tree seeds",
 );
+
+const mouse = world.animals.find(a => a.species === "mouse")!;
+const cacheBank = [{ ...tree }];
+collectSeed(cacheBank, mouse, tree, "cache", 10);
+assert(cacheBank.length === 0 && mouse.seedCargo?.seed.id === tree.id, "Pickup transfers one real seed");
+mouse.x = tree.x + 4;
+mouse.z = tree.z;
+dropSeed(cacheBank, mouse, 20, 1);
+assert(!!mouse.seedCargo, "Mouse waits for dry ground to bury its seed");
+dropSeed(cacheBank, mouse, 21, 0);
+assert(!mouse.seedCargo && cacheBank.length === 1 && cacheBank[0].deposit?.owner === mouse.id &&
+  cacheBank[0].x === mouse.x, "Burial retains plant ancestry at the new site");
