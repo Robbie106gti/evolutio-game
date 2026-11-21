@@ -34,7 +34,7 @@ export function insectEggCanDevelop(
 }
 
 export function insectNurseries(
-  species: "bug" | "mosquito",
+  species: DormantEggSpecies,
   x: number,
   z: number,
   depthAt: (x: number, z: number) => number,
@@ -42,14 +42,20 @@ export function insectNurseries(
   eggs: Egg[],
 ) {
   const sites: { x: number; z: number }[] = [];
-  for (const distance of [0, 1, 2, 4, 6, 8, 12, 16]) {
+  const distances = species === "fly" ? [0, 1, 2, 4, 6] : [0, 1, 2, 4, 6, 8, 12, 16];
+  for (const distance of distances) {
     const directions = distance === 0 ? 1 : 16;
     for (let i = 0; i < directions; i++) {
       const angle = i * 2 * Math.PI / directions;
       const px = x + distance * Math.cos(angle), pz = z + distance * Math.sin(angle);
       if (Math.hypot(px, pz) >= WORLD_RADIUS) continue;
       const depth = depthAt(px, pz);
-      if (!(species === "mosquito" ? shallowWater(depth) : moistSoil(depth, landAt(land, px, pz).moisture))) continue;
+      if (species === "mosquito") {
+        if (!shallowWater(depth)) continue;
+      } else if (species === "fly") {
+        const { moisture, litter } = landAt(land, px, pz);
+        if (depth > 0.1 || moisture < 0.3 || litter < 0.035) continue;
+      } else if (!moistSoil(depth, landAt(land, px, pz).moisture)) continue;
       sites.push({ x: px, z: pz });
     }
   }

@@ -204,7 +204,8 @@ export function stepReproduction(
     }
     // Pay the remaining reproductive investment only when young are delivered.
     a.energy -= broodInstallment(a);
-    a.cooldown = isFlyingInsect(a.species) ? 12 : isInsect(a.species) ? 24 : a.species === "mouse" ? MOUSE_BIRTH_RECOVERY : 60;
+    if (a.species !== "bug")
+      a.cooldown = isFlyingInsect(a.species) ? 12 : a.species === "ant" ? 24 : a.species === "mouse" ? MOUSE_BIRTH_RECOVERY : 60;
   }
 
   const receptive = (a: Animal) =>

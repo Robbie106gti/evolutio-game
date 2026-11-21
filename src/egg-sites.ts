@@ -14,14 +14,19 @@ export function distributeEggSites(species: Species, sites: Point[], eggs: Egg[]
     }
     patch.sites.push(site);
   }
+  let eggLoad = 0;
   for (const egg of eggs) {
     if (egg.health <= 0 || egg.embryo.species !== species) continue;
     const patch = patches.get(landIndex(egg.embryo.x, egg.embryo.z));
-    if (patch) patch.load++;
+    if (patch) {
+      patch.load++;
+      eggLoad++;
+    }
   }
   const nearby = [...patches.values()];
   return {
     nearest: sites[0],
+    eggLoad,
     nextSite() {
       // Use the least crowded patch, with nearer sites winning ties.
       const patch = nearby.reduce((least, candidate) => candidate.load < least.load ? candidate : least);

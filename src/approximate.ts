@@ -401,7 +401,7 @@ export function stepApproximateAnimals(
         continue;
       }
       a.energy -= 32;
-      a.cooldown = a.species === "mouse" ? MOUSE_BIRTH_RECOVERY : 40;
+      if (a.species !== "bug") a.cooldown = MOUSE_BIRTH_RECOVERY;
       if (a.species !== "bug") {
         w.addAnimal(a.kind, a);
         w.births++;

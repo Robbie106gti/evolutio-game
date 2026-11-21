@@ -83,3 +83,15 @@ brood.time = Math.floor(brood.time) + 0.95;
 brood.step(0.1);
 if (brood.eggsLaid !== laid + 3 || nest.pantry!.carrion !== 0)
   throw Error("A small colony can spend its limited pantry on a small brood");
+
+for (let i = 0; i < 6; i++) {
+  const worker = brood.addAnimal("grazer", undefined, "ant");
+  Object.assign(worker, { age: 24, energy: 75, cooldown: 100 });
+}
+Object.assign(queen, { cooldown: 0, energy: 75 });
+Object.assign(nest.pantry!, { carrion: 50, "dead plants": 0, crop: 0 });
+const previousBroods = brood.eggsLaid;
+brood.time = Math.floor(brood.time) + 0.95;
+brood.step(0.1);
+if (brood.eggsLaid - previousBroods !== 39 || Number(nest.pantry!.carrion) !== 30.5)
+  throw Error("An established colony can fund a larger brood and pays for each egg");

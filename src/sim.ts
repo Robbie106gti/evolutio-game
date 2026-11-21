@@ -711,19 +711,25 @@ export class World {
     available = Infinity,
     inheritance?: { mate: Animal } | { clone: true },
   ) {
-    if (parent.species === "fish" && !isFishWater(parent.x, parent.z, createWaterQuery(this.ponds, this.weather.land))) return false;
+    if (parent.species === "fish" && !isFishWater(parent.x, parent.z, createWaterQuery(this.ponds, this.weather.land))) return 0;
     const species = parent.species;
     const shoreSites = species === "frog" || species === "crab"
       ? shoreNursery(species, parent, this.ponds, createWaterQuery(this.ponds, this.weather.land), this.eggs)
       : undefined;
-    const insectSites = species === "bug" || species === "mosquito"
+    const insectSites = hasDormantEggs(species)
       ? insectNurseries(species, parent.x, parent.z,
           createWaterQuery(this.ponds, this.weather.land), this.weather.land, this.eggs)
       : undefined;
     const nurseries = shoreSites ?? insectSites;
-    if ((species === "frog" || species === "crab" || species === "bug" || species === "mosquito") && !nurseries) return false;
-    const profile = SPECIES[parent.species];
-    const laid = Math.min(profile.clutchSize, available);
+    if ((species === "frog" || species === "crab" || species === "bug" || species === "mosquito") && !nurseries) return 0;
+    const profile = SPECIES[species];
+    const antHill = species === "ant" ? this.dens.find(d => d.id === parent.home && d.pantry && d.progress >= 1) : undefined;
+    const provisioned = antHill?.queen === parent.id;
+    const workers = provisioned ? this.animals.filter(a =>
+      a.species === "ant" && a.home === parent.home && a.id !== parent.id &&
+      a.energy > 0 && a.age >= maturityAge(a)).length : 0;
+    const workerBonus = 3 * clamp(workers - 4, 0, 10);
+    const laid = Math.min(profile.clutchSize + workerBonus, available);
     let developing = laid;
     if (parent.species === "frog" || isInsect(parent.species) || parent.species === "spider") {
       // Sample early egg losses in bulk. Geometric gaps give the same binomial
@@ -733,7 +739,6 @@ export class World {
       const quality = frog
         ? Math.min(1, waterDepth(this.ponds, site.x, site.z, this.weather.land))
         : landAt(this.weather.land, site.x, site.z).moisture;
-      const provisioned = parent.species === "ant" && this.dens.some(d => d.queen === parent.id && d.id === parent.home);
       // Fewer frog eggs are counted at laying, with similar expected recruitment.
       const baseSurvival = provisioned ? 0.5 : frog ? 0.025 + 0.08 * quality
         : parent.species === "spider" ? 0.06 + 0.06 * quality
@@ -813,10 +818,9 @@ export class World {
       let concealment = 0,
         buried = false;
       if (parent.species === "ant") {
-        const hill = this.dens.find(d => d.id === parent.home && d.pantry && d.progress >= 1);
-        if (hill) {
-          embryo.x = hill.x;
-          embryo.z = hill.z;
+        if (antHill) {
+          embryo.x = antHill.x;
+          embryo.z = antHill.z;
           buried = true;
           concealment = 0.8;
         }
@@ -866,11 +870,18 @@ export class World {
       });
 
     }
-    if (parent.species === "snake") {
+    if (species === "bug") {
+      const localEggs = insectSites?.eggLoad ?? 0;
+      // Sparse colonies keep their usual laying interval. Crowded nurseries
+      // get time to clear without shortening the eggs’ dormant period.
+      const recovery = this.naturalReproduction ? 24 : 40;
+      parent.cooldown = recovery + clamp(4 * (localEggs - 8), 0, 108);
+    }
+    if (species === "snake") {
       parent.energy -= 4;
       parent.nesting = 8 / parent.genes.digging;
     }
-    return true;
+    return laid;
   }
   leavePlantRemains(p: Plant) {
     this.plantRemains.push({
@@ -904,8 +915,8 @@ export class World {
           queen.energy < 28 || Math.hypot(queen.x-hill.x, queen.z-hill.z) > 0.85 ||
           waterDepth(this.ponds, hill.x, hill.z, this.weather.land) > 0.1) continue;
       const pantry = hill.pantry;
-      const eggs = Math.min(SPECIES.ant.clutchSize, Math.floor((pantry.carrion + pantry["dead plants"] + (pantry.crop ?? 0)) / 0.5));
-      if (eggs < 2) continue;
+      const funded = Math.floor((pantry.carrion + pantry["dead plants"] + (pantry.crop ?? 0)) / 0.5);
+      if (funded < 2) continue;
       const previous = queen.reproductive?.previousMate;
       const mate = ants.find(a => a.id === previous) ??
         (previous ? this.deceased.find(a => a.id === previous) : undefined) ??
@@ -913,7 +924,7 @@ export class World {
           Math.hypot(a.x-hill.x,a.z-hill.z) <= 2);
       if (!mate) continue;
       (queen.reproductive ??= {}).previousMate = mate.id;
-      const cost = eggs * 0.5;
+      const cost = this.layClutch(queen, funded, { mate }) * 0.5;
       const carrion = Math.min(cost, pantry.carrion);
       pantry.carrion -= carrion;
       const litter = Math.min(cost - carrion, pantry["dead plants"]);
@@ -921,7 +932,6 @@ export class World {
       pantry.crop = Math.max(0, (pantry.crop ?? 0) - (cost - carrion - litter));
       queen.energy -= 5;
       queen.cooldown = 20;
-      this.layClutch(queen, eggs, {mate});
     }
   }
   private suitableAntSite(x: number, z: number) {
@@ -938,13 +948,13 @@ export class World {
     }
     const hills = this.dens.filter(d => d.pantry);
     for (const [home, members] of colonies) {
-      if (members.length < 24 || hills.length >= 32 || this.dens.length >= 152) continue;
+      if (members.length < 18 || hills.length >= 32 || this.dens.length >= 152) continue;
       const hill = hills.find(d => d.id === home);
       if (!hill || hill.progress < 1) continue;
       const candidates = members.filter(a => a.id !== hill.queen && !a.antLoad && a.energy >= 45 && a.age >= maturityAge(a));
       const female = candidates.find(a => reproductiveSex(a) === "female");
       const male = candidates.find(a => reproductiveSex(a) === "male");
-      if (!female || !male || candidates.length < 6) continue;
+      if (!female || !male || candidates.length < 4) continue;
       for (let attempt = 0; attempt < 8; attempt++) {
         const angle = this.range(0, Math.PI * 2), radius = this.range(6, 10);
         const dx = Math.cos(angle) * radius, dz = Math.sin(angle) * radius;
@@ -1925,8 +1935,8 @@ export class World {
           }
         }
         if (a.species === "mosquito" && !layingMosquito && !a.reproductive?.target && reproductiveSex(a) === "female" && a.age >= maturityAge(a) &&
-            hungry && !threat && !need && a.age >= (a.nextBloodMealAge ?? 0)) {
-          const range = Math.min(4, g.sense);
+            (hungry || a.reproductive?.mate !== undefined) && !threat && !need && a.age >= (a.nextBloodMealAge ?? 0)) {
+          const range = Math.min(mosquitoHasFed(a) ? 4 : 8, g.sense);
           const host = animalGrid.findNear(a.x, a.z, range, b =>
             (SPECIES[b.species].family === "mammal" || b.species === "bird") &&
             b.energy > 20 && !inDen(b) && b.altitude < 1 &&
@@ -3434,7 +3444,8 @@ export class World {
           if (eggs && !this.layClutch(a)) a.cooldown = 2;
           else {
             a.energy -= isFlyingInsect(a.species) ? 14 : 32;
-            a.cooldown = isFlyingInsect(a.species) ? 22 : a.species === "mouse" ? MOUSE_BIRTH_RECOVERY : 40;
+            if (a.species !== "bug")
+              a.cooldown = isFlyingInsect(a.species) ? 22 : a.species === "mouse" ? MOUSE_BIRTH_RECOVERY : 40;
             if (eggs) continue;
             const baby = this.addAnimal(a.kind, a);
             animalById.set(baby.id, baby);
@@ -3510,7 +3521,7 @@ export class World {
         this.animals.flatMap((a) => a.reproductive?.mate ?? []),
       );
       const parents = new Set(
-        this.animals.flatMap((a) => [a.parent, a.otherParent]),
+        this.animals.flatMap((a) => [a.parent, a.otherParent, a.reproductive?.previousMate]),
       );
       const protectedRecords = this.deceased.filter(
         (a) => parents.has(a.id) && !pendingMates.has(a.id),

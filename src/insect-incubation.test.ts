@@ -73,6 +73,28 @@ delete older.world.eggsLaidBySpecies;
 const oldRow = bugs(decodeSave(JSON.stringify(older)).world);
 check(oldRow.laid === 0 && oldRow.waiting === dryIsland.eggs.length,
   "Older saves keep their current egg breakdown and start laid counts at zero");
+check(bug.cooldown === 40, "A sparse bug nursery keeps its regular recovery time");
+dryIsland.ponds = [];
+dryIsland.weather.land![moistPatch].moisture = 0.6;
+check(dryIsland.layClutch(bug, 6) === 6 && bug.cooldown > 40,
+  "A crowded bug nursery lengthens the wait before another clutch");
+
+const flyIsland = new World(39);
+flyIsland.animals = [];
+flyIsland.ponds = [];
+for (const cell of flyIsland.weather.land!) Object.assign(cell, { moisture: 0.15, litter: 0 });
+const fly = flyIsland.addAnimal("grazer", undefined, "fly");
+Object.assign(fly, { x: -28, z: 28 });
+const litterPatch = landIndex(-24, 28);
+Object.assign(flyIsland.weather.land![litterPatch], { moisture: 0.6, litter: 0.2 });
+flyIsland.random = () => 0;
+check(flyIsland.layClutch(fly, 6) === 6 && flyIsland.eggs.length === 6 &&
+  flyIsland.eggs.every(({ embryo }) => {
+    const { moisture, litter } = landAt(flyIsland.weather.land, embryo.x, embryo.z);
+    return Math.hypot(fly.x - embryo.x, fly.z - embryo.z) <= 6 &&
+      insectEggCanDevelop("fly", 16, 0, moisture, litter);
+  }),
+  "Flies place their eggs in nearby moist litter when their current location is dry");
 
 for (const species of ["bug", "fly", "mosquito"] as const) {
   const world = new World(39);
