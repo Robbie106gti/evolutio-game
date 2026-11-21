@@ -22,7 +22,7 @@ export function levelCards(storage: SlotStorage) {
       } catch {
         error = true;
       }
-      return `<article class="level-card"><div class="eyebrow">${level.mode === "sandbox" ? "FREE PLAY" : complete ? "COMPLETED" : "GUIDED LESSON"}</div><h3>${level.name}</h3><p>${descriptions[level.id]}</p><button data-open-level="${level.id}" ${locked || error ? "disabled" : ""}>${error ? "Save unavailable — preserved" : locked ? "Complete First Grove to unlock" : exists ? "Continue" : "Start"}</button>${level.id === "sandbox" ? "<small>Lessons never overwrite this island.</small>" : ""}</article>`;
+      return `<article class="level-card"><div class="eyebrow">${level.mode === "sandbox" ? "FREE PLAY" : complete ? "COMPLETED" : "GUIDED LESSON"}</div><h3>${level.name}</h3><p>${descriptions[level.id]}</p>${error && level.id === "sandbox" ? '<button data-recover-sandbox>Start a new sandbox</button><label>Open sandbox backup <input type="file" data-sandbox-backup accept=".json,application/json"></label><small>Your unreadable save will be archived first.</small>' : `<button data-open-level="${level.id}" ${locked || error ? "disabled" : ""}>${error ? "Save unavailable — preserved" : locked ? "Complete First Grove to unlock" : exists ? "Continue" : "Start"}</button>`}${level.id === "sandbox" ? "<small>Lessons never overwrite this island.</small>" : ""}</article>`;
     })
     .join("");
 }

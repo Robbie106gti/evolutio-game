@@ -1,5 +1,6 @@
 export const ANIMAL_STATES = [
   "Exploring",
+  "Investigating frog",
   "Courting",
   "Challenging rival",
   "Retreating from rival",
@@ -38,6 +39,7 @@ export const ANIMAL_STATES = [
   "Taking blood meal",
   "Seeking worms",
   "Aquatic feeding",
+  "Seeking deeper water",
   "Following parent",
   "In nest",
   "In den",
@@ -51,6 +53,7 @@ export const ANIMAL_STATES = [
   "Returning to catch",
   "Recovering",
   "Stalking",
+  "Pursuing prey",
   "Waiting in ambush",
   "Sprinting",
   "Striking at mouse",

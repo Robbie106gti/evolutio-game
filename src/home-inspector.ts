@@ -87,7 +87,7 @@ export function homeInspector(world: World, home: HomeSite): string {
     const workers = world.animals.filter(a => a.species === "ant" && a.home === hill.id && a.id !== hill.queen);
     return '<button class="close" data-close-inspect aria-label="Close inspection">×</button>' +
       '<h3>Ant hill #' + hill.id + '</h3><p>' + Math.round(hill.progress * 100) + '% built · ' +
-      Math.ceil(workers.length / 8) + ' scouts · ' + (workers.length - Math.ceil(workers.length / 8)) + ' workers · ' + workers.filter(a => a.antLoad).length + ' carrying food</p>' +
+      workers.filter(a => a.state === "Scouting for food").length + ' scouting · ' + workers.filter(a => a.state === "Following ant trail").length + ' following a trail · ' + workers.filter(a => a.antLoad).length + ' carrying food</p>' +
       '<p>' + (hill.queen ? 'Queen #' + hill.queen : 'Awaiting a queen') + ' � ' +
       world.eggs.filter(e => e.embryo.species === "ant" && e.embryo.home === hill.id).length + ' developing eggs</p>' +
       (hill.antTrail ? '<p>Active food trail</p>' : '') + '<p>Stored food energy · Dead plants ' + hill.pantry["dead plants"].toFixed(1) +

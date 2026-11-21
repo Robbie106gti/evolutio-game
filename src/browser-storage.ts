@@ -163,7 +163,17 @@ export async function archivedIslands(id: string): Promise<string[]> {
 // Rotate the playing slot and its jump checkpoint together. An abort leaves
 // the original island and the complete archive intact, including on quota errors.
 export async function rotateIsland(current: Session, expected: string | null, destination: Session | string) {
-  const id = current.world.level.id, key = slotKey(id), recovery = jumpBackupKey(id);
+  return rotateSlot(current.world.level.id, expected, packSave(encodeSave(current)), destination);
+}
+
+// An unreadable slot must be archived verbatim. Encoding the temporary world
+// displayed after a failed load would archive the wrong island.
+export function recoverUnreadableIsland(expected: string, next: Session) {
+  return rotateSlot(next.world.level.id, expected, expected, next);
+}
+
+async function rotateSlot(id: string, expected: string | null, previous: string, destination: Session | string) {
+  const key = slotKey(id), recovery = jumpBackupKey(id);
   const archive = archivePrefix(id) + new Date().toISOString() + "." + crypto.randomUUID();
   let next: Session, raw: string;
   let checkpoint: string | undefined;
@@ -180,7 +190,6 @@ export async function rotateIsland(current: Session, expected: string | null, de
     raw = packSave(encodeSave(next));
   }
   if (next.world.level.id !== id) throw new Error("Archive belongs to a different level.");
-  const previous = packSave(encodeSave(current));
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction("slots", "readwrite"), store = tx.objectStore("slots");
     const active = store.get(key), jump = store.get(recovery);

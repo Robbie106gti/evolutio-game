@@ -80,7 +80,7 @@ export const SPECIES = freezeProfile({
     hue: 0.18,
     diet: "Fish, frogs and water-edge birds",
     gait: "Swim / crawl",
-    clutchSize: 4,
+    clutchSize: 24,
     incubation: 65,
     capabilities: { aquatic: true },
   }),
@@ -246,9 +246,9 @@ export const ADAPTATION_DEFAULTS = {
 
 export const BURST_HUNTERS = {
   crocodile: { boost: 2.6, drain: 26, recovery: 4 },
-  cat: { boost: 2.5, drain: 22, recovery: 7 },
-  fox: { boost: 2.25, drain: 18, recovery: 6 },
-  wolf: { boost: 1.95, drain: 14, recovery: 5 },
+  cat: { boost: 3.2, drain: 26, recovery: 7 },
+  fox: { boost: 2.9, drain: 22, recovery: 6 },
+  wolf: { boost: 2.35, drain: 8, recovery: 5 },
 } as const;
 
 export const PLANT_VARIETIES = {

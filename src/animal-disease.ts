@@ -34,9 +34,15 @@ export function diseaseTarget(animal: Animal, candidates: Animal[], isHunter: (o
   if (healthy) return { animal: healthy, state: "Spreading infection" as const };
 }
 
+// Ant colonies tolerate routine contact. The inherited trait still separates
+// more and less resistant individuals within that species.
+function susceptibility(a: Animal) {
+  return (1 - a.genes.immunity) * (a.species === "ant" ? 0.28 : 1);
+}
+
 export function spreadInfection(animal: Animal, other: Animal, dt: number) {
   if (animal.species !== other.species || Math.abs(animal.altitude - other.altitude) > 0.8) return;
-  other.infection = clamp(other.infection + dt * 0.24 * (1 - other.genes.immunity), 0, 1);
+  other.infection = clamp(other.infection + dt * 0.24 * susceptibility(other), 0, 1);
 }
 
 export function prepareAnimalDisease(animals: readonly Animal[]) {
@@ -78,7 +84,7 @@ export function prepareAnimalDisease(animals: readonly Animal[]) {
           contagious += patch.contagious * weight;
         }
       }
-      const start = species === "bug" ? 9 : species === "fish" ? 20 : 12;
+      const start = species === "bug" ? 9 : species === "ant" ? 24 : species === "fish" ? 20 : 12;
       const range = species === "fish" ? 24 : 16;
       exposure = {
         density,
@@ -106,11 +112,11 @@ export function prepareAnimalDisease(animals: readonly Animal[]) {
       const exposure = exposureAt(animal.species, population, index);
       const immunity = animal.genes.immunity;
       const fungalExposure = fungus * (animal.species === "fish" ? 0.035 : 0.14);
-      const susceptibility = animal.species === "bug" ? 1.45 : 1;
-      const infectionRate = susceptibility * exposure.crowding *
+      const swarmPressure = animal.species === "bug" ? 1.45 : 1;
+      const infectionRate = swarmPressure * exposure.crowding *
         (0.045 + fungalExposure + 0.12 * exposure.contagiousShare);
       animal.infection = clamp(animal.infection +
-        dt * (infectionRate * (1 - immunity) - (0.012 + immunity * 0.025)), 0, 1);
+        dt * (infectionRate * susceptibility(animal) - (0.012 + immunity * 0.025)), 0, 1);
       animal.energy -= dt * 0.45 * infectionSeverity(animal);
     },
   };

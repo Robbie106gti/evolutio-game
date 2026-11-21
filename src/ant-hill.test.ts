@@ -93,5 +93,33 @@ Object.assign(nest.pantry!, { carrion: 50, "dead plants": 0, crop: 0 });
 const previousBroods = brood.eggsLaid;
 brood.time = Math.floor(brood.time) + 0.95;
 brood.step(0.1);
-if (brood.eggsLaid - previousBroods !== 39 || Number(nest.pantry!.carrion) !== 30.5)
+if (brood.eggsLaid - previousBroods !== 39 || Math.abs(nest.pantry!.carrion - (30.5 - brood.eggs.filter(e => e.buried && e.embryo.home === nest.id).length * 0.002)) > 1e-8)
   throw Error("An established colony can fund a larger brood and pays for each egg");
+
+const { gatherAntCrop } = await import("./food-energy.ts");
+const foodWorld = new World(14);
+const forager = foodWorld.addAnimal("grazer", undefined, "ant");
+for (const [kind, variety, source] of [
+  ["grass", 2, "nectar"], ["bush", 1, "fruit juice"], ["tree", 0, "sap"],
+] as const) {
+  const p = foodWorld.addPlant(undefined, -20, 20, kind, variety)!;
+  Object.assign(p, { age: 200, health: 90, liquidFood: 1, seedFood: 2 });
+  const liquid = gatherAntCrop(p, forager, {});
+  const seeds = gatherAntCrop(p, forager, {});
+  if (liquid.source !== source || liquid.energy !== 5 || p.liquidFood !== 0 ||
+      seeds.source !== kind + " seeds" || seeds.energy <= 0 || p.seedFood !== 0)
+    throw Error("Ant cargo must come from finite plant stores");
+}
+
+const introductions = new World(52);
+introductions.animals = [];
+introductions.dens = [];
+const initialAnt = introductions.addAnimal("grazer", undefined, "ant");
+const unsafeHill = introductions.dens.find(d => d.id === initialAnt.home)!;
+const scorpion = introductions.addAnimal("hunter", undefined, "scorpion");
+Object.assign(scorpion, { x: unsafeHill.x, z: unsafeHill.z });
+const newcomers = Array.from({length: 50}, () => introductions.addAnimal("grazer", undefined, "ant"));
+const used = new Set(newcomers.map(a => a.home));
+if (used.size < 3 || used.has(unsafeHill.id) || used.has(0) ||
+    introductions.dens.some(d => used.has(d.id) && Math.hypot(d.x-scorpion.x, d.z-scorpion.z) < 6))
+  throw Error("New ants should form several groups away from a scorpion at an existing hill");

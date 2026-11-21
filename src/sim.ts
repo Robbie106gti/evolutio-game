@@ -1,7 +1,7 @@
 import { markTrail, nextTrailPoint } from "./ant-trails.ts";
 import { crabShoreTarget, turnFromBank } from "./shore-movement.ts";
 import { recordApproach, recordBugStep } from "./bug-routes.ts";
-import { ANIMAL_ENERGY_CAPACITY, browseValue, worthBrowsing, growSeedFood, growPlantLiquid, harvestPlant, ingestPlantFood, ingest, mealYield, SEED_FOOD, type FoodTotals, type TreeBrowseDamage } from "./food-energy.ts";
+import { ANIMAL_ENERGY_CAPACITY, browseValue, antCropAvailable, gatherAntCrop, worthBrowsing, growSeedFood, growPlantLiquid, harvestPlant, ingestPlantFood, ingest, mealYield, SEED_FOOD, type FoodTotals, type TreeBrowseDamage } from "./food-energy.ts";
 import { pondFoodQuery } from "./pond-food.ts";
 import { canGrowCactus } from "./cactus-habitat.ts";
 import { disperseSeed, storeDormantSeed, collectSeed, dropSeed } from "./seed-dispersal.ts";
@@ -80,7 +80,7 @@ import {
   CoverCache,
   createWaterQuery,
   stepWater,
-  detectionRange,
+  detectionRange, visualSearchRadius, visiblyMoving,
   concealedAmbush,
   eyesightCost,
   initialPonds,
@@ -165,6 +165,11 @@ import { hasDormantEggs, insectEggPatch, insectEggTemperature, insectNurseries, 
 import { findFishWater, isFishWater } from "./fish-habitat.ts";
 import { FROG_WORM_DEPTH, shoreNursery, frogShoreFood } from "./frog-nursery.ts";
 import { diseaseTarget, hasBreedingHealth, illnessSpeed, illnessVulnerability, prepareAnimalDisease, spreadInfection } from "./animal-disease.ts";
+
+// Keep a return-trip ration while sharing even small finds with the hill.
+function workerShare(ant: Animal, harvest: number) {
+  return Math.min(Math.max(0, 65 - ant.energy), harvest * (ant.energy < 18 ? 0.8 : 0.35));
+}
 
 export class World {
   readonly #level: Readonly<LevelDefinition>;
@@ -462,11 +467,23 @@ export class World {
         p.z = site.z;
       }
     }
-    const occupiedHills = species === "ant" && !parent
-      ? new Set(this.animals.filter(a => a.species === "ant" && a.energy > 0).map(a => a.home)) : undefined;
-    const antHill = species === "ant" ? this.dens.find(d => d.pantry &&
-      (parent ? d.id === parent.home : occupiedHills?.has(d.id) && this.suitableAntSite(d.x, d.z)) &&
-      waterDepth(this.ponds, d.x, d.z, this.weather.land) < 0.1) : undefined;
+    let antHill: Den | undefined;
+    if (species === "ant") {
+      if (parent) antHill = this.dens.find(d => d.pantry && d.id === parent.home);
+      else {
+        const occupants = new Map<number, number>();
+        for (const ant of this.animals)
+          if (ant.species === "ant" && ant.energy > 0)
+            occupants.set(ant.home, (occupants.get(ant.home) ?? 0) + 1);
+        // Introduce family-sized groups. Established colonies can still grow freely.
+        antHill = this.dens.find(d => d.pantry && (occupants.get(d.id) ?? 0) < 24 &&
+          this.suitableAntSite(d.x, d.z) && waterDepth(this.ponds, d.x, d.z, this.weather.land) < 0.05);
+        if (!antHill) {
+          for (let tries = 0; tries < 30 && !this.canFoundAntHill(p.x, p.z); tries++)
+            Object.assign(p, this.point());
+        }
+      }
+    }
     if (species === "ant") {
       const origin = antHill;
       if (origin) {
@@ -524,7 +541,7 @@ export class World {
       genes,
       state: "Exploring",
     };
-    if (species === "ant" && !parent && !antHill && this.suitableAntSite(a.x,a.z) && this.dens.length < 152 &&
+    if (species === "ant" && !parent && !antHill && this.canFoundAntHill(a.x,a.z) && this.dens.length < 152 &&
         this.dens.filter(d => d.pantry).length < 32 && waterDepth(this.ponds, a.x, a.z, this.weather.land) < 0.05) {
       a.home = this.nextId++;
       this.dens.push({ id: a.home, owner: a.id, x: a.x, z: a.z, progress: 0,
@@ -596,7 +613,7 @@ export class World {
       const nearbyThreats = spider ? conflictingAnimals.near(x, z, 7)
         .filter(a => Math.hypot(a.x - x, a.z - z) < 7).length : 0;
       const score = cover + Math.min(4, prey) * 0.24 + worms -
-        Math.abs(cell.moisture - 0.45) * 0.6 - neighbors * 0.18 - distance * 0.013 +
+        (spider ? Math.abs(cell.moisture - 0.45) * 0.6 : 3 * Math.abs(cell.moisture - 0.22)) - neighbors * 0.18 - distance * 0.013 +
         (nearMate ? 0.35 : 0) - Math.min(4, nearbyThreats) * 0.25;
       if (score > best) {
         best = score;
@@ -768,7 +785,7 @@ export class World {
       // a small founding group. Keep early recruitment possible at low density.
       const overcrowding = parent.species === "fly" || parent.species === "bug"
         ? Math.max(0, pressure - 1) ** 2 : 0;
-      const chance = baseSurvival / (1 + pressure + overcrowding);
+      const chance = provisioned ? baseSurvival : baseSurvival / (1 + pressure + overcrowding);
       const logFailure = Math.log1p(-chance);
       developing = 0;
       let index = -1;
@@ -912,7 +929,7 @@ export class World {
         hill.queen = queen?.id;
       }
       if (!queen || queen.cooldown > 0 || queen.reproductive?.mate || !canReproduce(queen) || !hasBreedingHealth(queen) ||
-          queen.energy < 28 || Math.hypot(queen.x-hill.x, queen.z-hill.z) > 0.85 ||
+          queen.energy < 16 || Math.hypot(queen.x-hill.x, queen.z-hill.z) > 0.85 ||
           waterDepth(this.ponds, hill.x, hill.z, this.weather.land) > 0.1) continue;
       const pantry = hill.pantry;
       const funded = Math.floor((pantry.carrion + pantry["dead plants"] + (pantry.crop ?? 0)) / 0.5);
@@ -922,21 +939,26 @@ export class World {
         (previous ? this.deceased.find(a => a.id === previous) : undefined) ??
         ants.find(a => reproductiveSex(a) === "male" && canReproduce(a) &&
           Math.hypot(a.x-hill.x,a.z-hill.z) <= 2);
-      if (!mate) continue;
-      (queen.reproductive ??= {}).previousMate = mate.id;
-      const cost = this.layClutch(queen, funded, { mate }) * 0.5;
+      if (mate) (queen.reproductive ??= {}).previousMate = mate.id;
+      const cost = this.layClutch(queen, funded, mate ? { mate } : undefined) * 0.5;
       const carrion = Math.min(cost, pantry.carrion);
       pantry.carrion -= carrion;
       const litter = Math.min(cost - carrion, pantry["dead plants"]);
       pantry["dead plants"] -= litter;
       pantry.crop = Math.max(0, (pantry.crop ?? 0) - (cost - carrion - litter));
-      queen.energy -= 5;
-      queen.cooldown = 20;
+      queen.energy -= Math.min(5, cost * 0.25);
+      queen.cooldown = 8;
     }
   }
   private suitableAntSite(x: number, z: number) {
     const cell = landAt(this.weather.land, x, z);
-    return cell.moisture >= 0.24 && changingWeights(this.weather.land, x, z).desert < 0.65;
+    return cell.moisture >= 0.24 && changingWeights(this.weather.land, x, z).desert < 0.65 &&
+      !this.animals.some(a => (a.species === "scorpion" || a.species === "frog") && a.energy > 0 &&
+        (a.x - x) ** 2 + (a.z - z) ** 2 < 36);
+  }
+  private canFoundAntHill(x: number, z: number) {
+    return this.suitableAntSite(x, z) && waterDepth(this.ponds, x, z, this.weather.land) < 0.05 &&
+      !this.dens.some(d => d.pantry && (d.x - x) ** 2 + (d.z - z) ** 2 < 36);
   }
   private expandAntColonies(depthAt: (x: number, z: number) => number) {
     const colonies = new Map<number, Animal[]>();
@@ -1109,7 +1131,13 @@ export class World {
         stepInsectEgg(egg, dt, temperature, depth, soil.moisture, soil.litter,
           insectEggCounts.get(insectEggPatch(index, a.species)) ?? 1);
       } else {
-        egg.age += dt;
+        const pantry = a.species === "ant" && egg.buried ? nurseryDens.get(a.home)?.pantry : undefined;
+        // Laying provisions the egg up front. Extra food supports faster brood care.
+        const stock = pantry && (pantry.carrion > pantry["dead plants"] ? "carrion" : "dead plants");
+        const source = pantry && stock && (pantry.crop ?? 0) > pantry[stock] ? "crop" : stock;
+        const ration = pantry && source ? Math.min(pantry[source] ?? 0, dt * 0.02) : 0;
+        if (pantry && source && ration) pantry[source] = (pantry[source] ?? 0) - ration;
+        egg.age += dt + ration * 20;
         const wet = depth > a.altitude + 0.1;
         const waterEgg = SPECIES[a.species].capabilities.waterEggs;
         if (waterEgg !== wet) egg.health -= dt * 3;
@@ -1439,8 +1467,8 @@ export class World {
     for (const a of this.animals)
       if (a.energy > 0 && plantById.has(a.sensedTarget))
         plantVisitors.set(a.sensedTarget, (plantVisitors.get(a.sensedTarget) ?? 0) + 1);
-    const colonyRanks = new Map<number, number>();
-    const remainsIds = new Set([...this.plantRemains, ...this.carcasses].map(r => r.id));
+
+    const remainsIds = new Set([...this.plantRemains, ...this.carcasses].filter(r => r.decay < 1).map(r => r.id));
     const animalsStart = profiling ? performance.now() : 0;
     const disease = prepareAnimalDisease(this.animals);
     if (approximate) stepApproximateAnimals(this, dt, depthAt, disease);
@@ -1453,11 +1481,11 @@ export class World {
         if (a.species === "ant" && !hill?.pantry) {
           let range = 18;
           for (const site of this.dens) {
-            if (!site.pantry) continue;
+            if (!site.pantry || !this.suitableAntSite(site.x, site.z)) continue;
             const distance = Math.hypot(a.x - site.x, a.z - site.z);
             if (distance < range) { range = distance; hill = site; }
           }
-          if (!hill?.pantry && this.suitableAntSite(a.x,a.z) && depthAt(a.x, a.z) < 0.05 && this.dens.length < 152 &&
+          if (!hill?.pantry && this.canFoundAntHill(a.x,a.z) && depthAt(a.x, a.z) < 0.05 && this.dens.length < 152 &&
               this.dens.filter(d => d.pantry).length < 32) {
             hill = { id: this.nextId++, owner: a.id, x: a.x, z: a.z, progress: 0,
               pantry: { carrion: 0, "dead plants": 0 } };
@@ -1466,18 +1494,16 @@ export class World {
           }
           if (!hill?.pantry) {
             hill = this.dens.reduce<Den | undefined>((nearest, site) =>
-              site.pantry && (!nearest || Math.hypot(a.x-site.x, a.z-site.z) <
+              site.pantry && this.suitableAntSite(site.x, site.z) && (!nearest || Math.hypot(a.x-site.x, a.z-site.z) <
                 Math.hypot(a.x-nearest.x, a.z-nearest.z)) ? site : nearest, undefined);
           }
           if (hill) a.home = hill.id;
         }
-        let scout = false;
-        if (hill?.pantry && a.id !== hill.queen) {
-          const rank = colonyRanks.get(hill.id) ?? 0;
-          colonyRanks.set(hill.id, rank + 1);
-          scout = rank % 8 === 0;
-          if (hill.antTrail && (hill.antTrail.expires < this.time || !remainsIds.has(hill.antTrail.source))) delete hill.antTrail;
-        }
+        const worker = !!hill?.pantry && hill.progress >= 1 && a.id !== hill.queen;
+        if (worker && hill?.antTrail && (hill.antTrail.expires < this.time ||
+            !(remainsIds.has(hill.antTrail.source) || (plantById.has(hill.antTrail.source) && antCropAvailable(plantById.get(hill.antTrail.source)!))))) delete hill.antTrail;
+        const trail = worker && hill?.antTrail && hill.antTrail.points.some(p =>
+          Math.abs(a.x - p.x) < 2 && Math.hypot(a.x - p.x, a.z - p.z) < 2) ? hill.antTrail : undefined;
         const hunter = burstProfile(a.species);
         a.restTimer = Math.max(0, a.restTimer - dt);
         if (a.mealEnergy > 0) {
@@ -1550,14 +1576,16 @@ export class World {
         let distance = target
           ? Math.hypot(target.x - a.x, target.z - a.z)
           : g.sense;
-        const foodRange = a.species === "mosquito" && a.energy < 30 ? g.sense * 2 : g.sense;
+        const sight = visualSearchRadius(a);
+        if (threat && isInsect(a.species) && !visiblyMoving(threat)) threat = undefined;
+        const foodRange = a.species === "mosquito" && a.energy < 30 ? g.sense * 2 : sight;
         const invalidTarget =
           !!target &&
           (target.energy <= ("genes" in target ? 0 : 2) ||
             ("genes" in target && (shelteredInAntHill(target) || ((a.species === "frog" || a.species === "spider" || a.species === "scorpion" || a.species === "crocodile" ||
               ((a.species === "snake" || a.species === "bird") && target.species === "frog") ||
               target.species === "crocodile" || target.species === "turtle") && !canReachPrey(a, target)))) ||
-            (!("genes" in target) && !worthBrowsing(target, a.energy, a.species)));
+            (!("genes" in target) && !(worker ? antCropAvailable(target) : worthBrowsing(target, a.energy, a.species))));
         const urgentFood =
           hungry &&
           (!target || invalidTarget || distance > 2) &&
@@ -1589,7 +1617,7 @@ export class World {
           2,
           (b) =>
             b.energy > 0 &&
-            canReachPrey(b, a) &&
+            canReachPrey(b, a) && (!isInsect(a.species) || visiblyMoving(b)) &&
             Math.hypot(b.x - a.x, b.z - a.z) < 2 &&
             (b.state !== "Waiting in ambush" || !concealedAmbush(b, terrain.get(b.id) ?? coverAt(b)) ||
               Math.hypot(b.x - a.x, b.z - a.z) < 0.45 * g.eyesight) &&
@@ -1645,23 +1673,23 @@ export class World {
               target = b;
             }
           };
-          if (hungry) {
+          if (hungry || (worker && !a.antLoad && !restDue)) {
             if (
               SPECIES[a.species].plants &&
               eatsPlants(a) &&
               a.species !== "bird"
             )
               for (const p of plantGrid.near(a.x, a.z, foodRange))
-                if (worthBrowsing(p, a.energy, a.species)) considerTarget(p);
+                if (worker ? (!trail || trail.source === p.id) && antCropAvailable(p) : worthBrowsing(p, a.energy, a.species)) considerTarget(p);
             if (huntsAnimals(a))
-              for (const b of animalGrid.near(a.x, a.z, g.sense))
+              for (const b of animalGrid.near(a.x, a.z, foodRange))
                 if (b.energy > 0 && canReachPrey(a, b)) considerTarget(b);
           }
 
           threat = predatorGrid.findNear(
             a.x,
             a.z,
-            g.sense,
+            sight,
             (b) =>
               canReachPrey(b, a) &&
               (!burstProfile(b.species) ||
@@ -1758,7 +1786,7 @@ export class World {
             needState = "Drinking";
           }
         } else if (
-          harsh &&
+          harsh && a.species !== "fish" &&
           a.energy > 45 &&
           (localTemp > 36 ||
             localTemp < 5 ||
@@ -1969,7 +1997,7 @@ export class World {
           let food: EdibleRemains | undefined;
           for (const r of remainsGrid.near(a.x, a.z, reach)) {
             if (a.species === "scorpion" && "kind" in r) continue;
-            if (hill?.pantry && !scout && hill.antTrail && r.id !== hill.antTrail.source) continue;
+            if (trail && r.id !== trail.source) continue;
             const d = Math.hypot(a.x - r.x, a.z - r.z);
             const remainingEnergy = (1 - r.decay) * remainsMass(r) * nutrition;
             const score = (smallScavenger ? Math.min(16, remainingEnergy) : 0) - d;
@@ -1987,21 +2015,22 @@ export class World {
               const cell = this.weather.land![landIndex(food.x, food.z)];
               const bite = consumeRemains(
                 food,
-                hill?.pantry && a.id !== hill.queen && a.energy >= 35 ? 5 : dt * DETRITUS_BITE_RATE,
+                worker ? 5 : dt * DETRITUS_BITE_RATE,
                 cell,
                 true,
               );
               if (isInsect(a.species) && bite > 0 && a.energy < ANIMAL_ENERGY_CAPACITY) markInsectFeeding(a);
               const source = "kind" in food ? "dead plants" : "carrion";
-              if (hill?.pantry && a.id !== hill.queen && a.energy >= 35 && bite > 0)
-                a.antLoad = { food: source, energy: bite * nutrition, source: food.id, points: [{ x: food.x, z: food.z }] };
-              else ingest(this.foodTotals, a, source, bite * nutrition);
+              const harvest = bite * nutrition;
+              const meal = worker ? workerShare(a, harvest) : harvest;
+              ingest(this.foodTotals, a, source, meal);
+              if (harvest > meal) a.antLoad = { food: source, energy: harvest - meal, source: food.id, points: [{ x: food.x, z: food.z }] };
               a.hydration = Math.min(100, a.hydration + bite * 2);
             }
           }
         }
         if (
-          (a.species === "bug" || a.species === "ant" ||
+          (a.species === "bug" || (a.species === "ant" && !a.antLoad && !target) ||
             (a.species === "bird" && a.birdDiet === "insectivore" && hungry && !target)) &&
           hungry &&
           !a.nursery &&
@@ -2014,7 +2043,7 @@ export class World {
             needState = "Eating mushrooms";
             stationary = true;
             if (a.altitude < 0.5) {
-              const bite = Math.min(cell.fungus, dt * FUNGI.mushroom.biteRate);
+              const bite = Math.min(cell.fungus, (worker ? 1 : dt) * FUNGI.mushroom.biteRate);
               cell.fungus -= bite;
               if (a.species === "bug" && bite > 0 && a.energy < ANIMAL_ENERGY_CAPACITY) {
                 markInsectFeeding(a);
@@ -2033,7 +2062,10 @@ export class World {
                 a.lastMushroomCell = index;
                 a.lastMushroomTime = this.time;
               }
-              ingest(this.foodTotals, a, "mushrooms", bite * FUNGI.mushroom.nutrition);
+              const harvest = bite * FUNGI.mushroom.nutrition;
+              const meal = worker ? workerShare(a, harvest) : harvest;
+              ingest(this.foodTotals, a, "mushrooms", meal);
+              if (worker && !a.antLoad && harvest > meal) a.antLoad = { food: "crop", energy: harvest - meal };
               a.hydration = Math.min(
                 100,
                 a.hydration + bite * FUNGI.mushroom.hydration,
@@ -2061,7 +2093,9 @@ export class World {
         const ambushCover = terrain.get(a.id) ?? (ambusher ? coverAt(a) : undefined);
         const atHide = ambusher && ambushCover && (ambushCover.cover >= 0.15 ||
           (a.species === "spider" ? ambushCover.sand : ambushCover.name === "Desert"));
-        const reach = 0.65 + g.size * 0.35 * g.length;
+        const tongueReach = a.species === "frog" && target && "genes" in target && isInsect(target.species)
+          ? 0.65 * grownBodySize(a) : 0;
+        const reach = 0.65 + g.size * 0.35 * g.length + tongueReach;
         let scorpionScouting = false;
         if (a.species === "scorpion") {
           if (a.mealEnergy > 0) a.lastPreyAt = this.time;
@@ -2156,7 +2190,8 @@ export class World {
           needState = "Returning to catch";
           stationary = false;
         }
-        const strike = ambusher && target && "genes" in target &&
+        const strike = ambusher && a.mealEnergy <= 0 &&
+          (a.species !== "scorpion" || a.restTimer <= 0) && target && "genes" in target &&
           distance <= reach + (a.species === "scorpion" ? 2.8 : 0.8) * g.stride &&
           (retrieving || a.stamina > 20) && (a.species !== "scorpion" || a.age >= (a.nextStingAge ?? 0));
         // Scout food that insects can actually reach. A hide beside the food
@@ -2264,11 +2299,11 @@ export class World {
             needState = "Foraging worms";
             stationary = true;
             if (a.altitude < 0.5) {
-              const bite = eatWorms(cell, a.species === "spider" ? dt * 0.5 : dt);
+              const bite = eatWorms(cell, dt * (a.species === "frog" ? 2 : a.species === "spider" ? 0.5 : 1));
               ingest(this.foodTotals, a, "worms", bite * 110);
               a.hydration = Math.min(100, a.hydration + bite * 12);
             }
-          } else if (youngFrog && this.weather.land) {
+          } else if (a.species === "frog" && this.weather.land) {
             const food = frogShoreFood(a, this.weather.land, depthAt);
             if (food) {
               target = undefined;
@@ -2302,7 +2337,8 @@ export class World {
           (a.crossingZ === null || a.oxygen < 30 || a.stamina < 15);
         const diseasePatch = landIndex(a.x, a.z);
         const currentLand = landAt(this.weather.land, a.x, a.z);
-        const mismatch = Math.abs(currentLand.moisture - g.preferredMoisture);
+        const preferredMoisture = a.species === "scorpion" ? 0.5 * g.preferredMoisture + 0.08 : g.preferredMoisture;
+        const mismatch = Math.abs(currentLand.moisture - preferredMoisture);
         if (
           deep ||
           (!need && !threat && a.species !== "fish" && a.species !== "crab" && a.mealEnergy <= 0 && (a.energy > 85 || !target) && mismatch > 0.18)
@@ -2317,7 +2353,7 @@ export class World {
             if (Math.hypot(x, z) > WORLD_RADIUS - 1) continue;
             const candidate =
               Math.abs(
-                landAt(this.weather.land, x, z).moisture - g.preferredMoisture,
+                landAt(this.weather.land, x, z).moisture - preferredMoisture,
               ) +
               depthAt(x, z) * 3;
             if (candidate < score - 0.03) {
@@ -2348,14 +2384,14 @@ export class World {
           const youngFish = fish && a.age < maturityAge(a);
           const youngCrab = a.species === "crab" && a.age < maturityAge(a);
           const canGrazeAlgae = wet && !restDue && !threat && a.mealEnergy <= 0 &&
-            ((youngFish && a.energy < 90) ||
+            ((youngFish && a.energy < 90 && !foodAt(a.x, a.z)) ||
               (youngCrab && !need && depth < 0.7 && a.energy < 50) ||
               (youngFrog && (!need || needState === "Seeking worms") && depth <= 0.85 && a.energy < 50));
           const nurseryPond = canGrazeAlgae ? foodAt(a.x, a.z, "algae") : undefined;
           const feedingPond =
             !nurseryPond && (fish || a.species === "turtle") &&
             wet && !browsingHere &&
-            a.energy < 110 &&
+            a.energy < (fish ? ANIMAL_ENERGY_CAPACITY : 110) &&
             !restDue ? foodAt(a.x, a.z) : undefined;
           if (nurseryPond) {
             const bite = Math.min(nurseryPond.algae ?? 0, dt * 0.002);
@@ -2370,7 +2406,7 @@ export class World {
           } else if (feedingPond) {
             // Fish can use suspended food more efficiently than browsing turtles.
             const nutrition = fish ? 500 : 300;
-            const bite = Math.min(feedingPond.food, dt * (fish ? 0.75 : 0.6) / nutrition);
+            const bite = Math.min(feedingPond.food, dt * (fish ? 3.5 : 0.6) / nutrition);
             feedingPond.food -= bite;
             ingest(this.foodTotals, a, "pond food", bite * nutrition);
             if (a.species !== "fish") {
@@ -2378,6 +2414,18 @@ export class World {
               stationary = true;
             }
             needState = "Aquatic feeding";
+          }
+          if (fish && wet && harsh && !need && !threat && depth < 0.6) {
+            let deepest = depth;
+            for (let i = 0; i < 8; i++) {
+              const angle = i * Math.PI / 4;
+              const dx = Math.cos(angle), dz = Math.sin(angle);
+              const ahead = depthAt(a.x + dx, a.z + dz);
+              if (ahead <= deepest + 0.02 || depthAt(a.x + dx / 2, a.z + dz / 2) <= 0.1) continue;
+              deepest = ahead;
+              need = { x: a.x + dx, z: a.z + dz };
+              needState = "Seeking deeper water";
+            }
           }
           if (!wet && (fish || a.hydration < 65)) {
             need = { x: pond.x, z: pond.z };
@@ -2786,7 +2834,7 @@ export class World {
           // Hungry scorpions scout vegetated edges where insects forage.
           // Follow local habitat cues without seeing prey beyond sensory range.
           const score = (cell: typeof currentLand) => cell.grass + 0.6 * cell.litter +
-            0.4 * cell.forest - Math.abs(cell.moisture - 0.55) + (scorpionScouting
+            (scorpionScouting ? -0.3 : 0.4) * cell.forest - Math.abs(cell.moisture - (scorpionScouting ? preferredMoisture : 0.55)) + (scorpionScouting
               ? 1.5 * availableWorms(cell) + Math.max(0, 1 - (this.time - (cell.bugFeedTime ?? -Infinity)) / 30)
               : 0);
           let best = score(currentLand) + 0.025;
@@ -2882,6 +2930,10 @@ export class World {
                   a.stamina - (dt * hunter.drain) / g.endurance,
                 );
                 if (a.stamina <= 30) a.restTimer = 10;
+              } else if (a.species === "wolf") {
+                huntingState = "Pursuing prey";
+                burst = 1.65;
+                a.stamina = Math.max(0, a.stamina - dt * 2.5 / g.endurance);
               } else huntingState = "Stalking";
             } else if (a.species === "crocodile") {
               if (depthAt(a.x, a.z) > 0.1) {
@@ -2977,16 +3029,18 @@ export class World {
           const pantry = hill.pantry;
           const remains = pantry.carrion > pantry["dead plants"] ? "carrion" : "dead plants";
           const source = (pantry.crop ?? 0) > pantry[remains] ? "crop" : remains;
-          if (a.antLoad || hill.progress < 1 || (a.energy < (a.id === hill.queen ? 40 : hill.queen ? 28 : 50) && (pantry[source] ?? 0) > 0)) {
+          const broodReserve = hill.queen && a.energy >= 20 ? 1 : 0;
+          if (a.antLoad || hill.progress < 1 || (a.energy < (a.id === hill.queen ? 65 : hill.queen ? 45 : 50) && (pantry[source] ?? 0) > broodReserve)) {
             need = hill;
             target = undefined;
             stationary = Math.hypot(a.x - hill.x, a.z - hill.z) < 0.65;
             if (a.antLoad) {
               needState = "Carrying food to hill";
               if (a.antLoad.points) markTrail(a.antLoad.points, a);
+              if (a.antLoad.source && a.antLoad.points && (remainsIds.has(a.antLoad.source) || plantById.has(a.antLoad.source))) {
+                hill.antTrail = { source: a.antLoad.source, points: a.antLoad.points, expires: this.time + 45 };
+              }
               if (stationary) {
-                if (a.antLoad.source && a.antLoad.points && remainsIds.has(a.antLoad.source))
-                  hill.antTrail = { source: a.antLoad.source, points: a.antLoad.points, expires: this.time + 45 };
                 pantry[a.antLoad.food] = (pantry[a.antLoad.food] ?? 0) + a.antLoad.energy;
                 delete a.antLoad;
               }
@@ -2996,9 +3050,10 @@ export class World {
             } else {
               needState = stationary ? "Eating at hill" : "Returning home";
               if (stationary) {
-                const meal = Math.min(pantry[source] ?? 0, dt * 5);
+                // Healthy nestmates leave the next pair of eggs provisioned.
+                const meal = Math.min(Math.max(0, (pantry[source] ?? 0) - broodReserve), dt * 5);
                 pantry[source] = (pantry[source] ?? 0) - meal;
-                if (source === "crop") a.energy += meal; // Already recorded at harvest.
+                if (source === "crop") a.energy += meal;
                 else ingest(this.foodTotals, a, source, meal);
               }
             }
@@ -3008,12 +3063,12 @@ export class World {
             stationary = Math.hypot(a.x-hill.x,a.z-hill.z) < 0.55;
             needState = stationary ? "Tending brood" : "Returning home";
           } else if (!restDue && !social && !["Eating remains", "Seeking remains", "Drinking"].includes(needState)) {
-            if (!scout && (hill.antTrail || (a.energy >= 60 && (!hill.queen || (pantry[source] ?? 0) >= 15)))) {
+            if (trail && !need && (!target || target.id !== trail.source)) {
               target = undefined;
-              need = hill.antTrail ? nextTrailPoint(hill.antTrail, a) : hill;
-              needState = hill.antTrail ? "Following ant trail" : "Waiting at hill";
-              stationary = !hill.antTrail && Math.hypot(a.x - hill.x, a.z - hill.z) < 0.8;
-            } else if (scout && !need && !target) {
+              need = nextTrailPoint(trail, a);
+              needState = "Following ant trail";
+              stationary = false;
+            } else if (!need && !target) {
               needState = "Scouting for food";
             }
           }
@@ -3028,6 +3083,18 @@ export class World {
             target = undefined;
             stationary = Math.hypot(need.x - a.x, need.z - a.z) <= 0.55;
             if (stationary && drive.state === "Spreading infection") spreadInfection(a, drive.animal, dt);
+          }
+        }
+        // An idle insect can investigate a nearby resting frog by local cues.
+        // Stagger the visits so a whole swarm does not converge at once.
+        if (isInsect(a.species) && !target && !threat && !need && !needState && !stationary &&
+            (this.time + a.id) % 16 < 4) {
+          const frog = animalGrid.findNear(a.x, a.z, 2.5, b => b.species === "frog" &&
+            b.energy > 0 && !visiblyMoving(b) && Math.hypot(b.x - a.x, b.z - a.z) < 2.5 &&
+            depthAt(b.x, b.z) < 0.15);
+          if (frog) {
+            need = frog;
+            needState = "Investigating frog";
           }
         }
         const desired = need
@@ -3072,11 +3139,18 @@ export class World {
           !need && !threat && target && "genes" in target &&
           (isInsect(target.species) || target.species === "spider" ||
             (a.species === "bird" && target.species === "scorpion"));
-        if (insectHunt && !stationary) {
-          a.angle += delta * Math.min(0.5, dt * 3);
+        if (insectHunt && !stationary && target && "genes" in target) {
+          if (a.species === "bird" && distance < 4) {
+            // Steer into the final pass while descending toward the insect.
+            a.angle = desired;
+            if (distance > reach && a.stamina > 25) burst = Math.max(burst, 1.6);
+          } else {
+            a.angle += delta * Math.min(0.5, dt * 3);
+          }
           effort = 1;
           // Hold position for the last part of the descent instead of flying past the catch.
-          if (a.species === "bird" && distance < reach * 0.75) stationary = true;
+          if (a.species === "bird" && distance < reach * 0.75 &&
+              Math.abs(a.altitude - target.altitude) > 0.45) stationary = true;
         }
         const mouseHunter = a.species === "fox" || a.species === "cat" || a.species === "snake" ||
           (a.species === "bird" && a.birdDiet === "raptor");
@@ -3127,6 +3201,7 @@ export class World {
               "Feeding young",
               "Preparing nursery",
             ].includes(needState) && restAltitude > 0;
+          const swoop = target && "genes" in target && !need && !needState ? target : undefined;
           const flightTarget = (a.webHeldUntilAge ?? 0) > a.age ? a.altitude : threat
             ? 4
             : roosting
@@ -3135,11 +3210,13 @@ export class World {
                 ? eggAltitude
               : aerialPrey && distance < Math.min(7, g.sense)
                 ? aerialPrey.altitude
+                : swoop
+                ? Math.min(3, swoop.altitude + 0.32 + Math.max(0, distance - reach) * 0.55)
                 : landing || diving
                 ? 0
                 : 3;
           a.altitude = clamp(
-            a.altitude + clamp(flightTarget - a.altitude, -dt * (diving ? 6 : 3), dt * 3),
+            a.altitude + clamp(flightTarget - a.altitude, -dt * (diving || swoop ? 6 : 3), dt * 3),
             0,
             5,
           );
@@ -3168,6 +3245,12 @@ export class World {
           }
           a.altitude = clamp(a.altitude + (ballooning ? 1 : -2) * dt, 0, 1.2);
         }
+        const previousX = a.x, previousZ = a.z;
+        const escapingWolf = !hunter && threat?.species === "wolf" &&
+          threat.sensedTarget === a.id && !stationary &&
+          (threat.state === "Pursuing prey" || threat.state === "Sprinting");
+        // A fleeing animal can open a gap early, then tires if the pursuit continues.
+        const escapePace = escapingWolf ? 0.75 + 0.85 * a.stamina / 100 : 1;
         const speed = ballooning ? 2.4 :
           (stationary ? 0 : 1) *
           ((a.webHeldUntilAge ?? 0) > a.age ? 0 : 1) *
@@ -3179,7 +3262,7 @@ export class World {
           (hunter ? 1 : 0.65 + (0.35 * a.stamina) / 100) *
           (a.altitude > 0.6 ? 1.8 : 1) *
           thermal.speed *
-          effort *
+          escapePace * effort *
           SPECIES[a.species].speed *
           Math.sqrt(g.stride * g.cadence) *
           (a.species === "snake" ? 1 : Math.sqrt(g.limbs));
@@ -3187,7 +3270,7 @@ export class World {
           a.stamina = clamp(
             a.stamina +
               dt *
-                (stationary ? 4 : -(0.12 + 0.7 * speed * speed) / g.endurance),
+                (stationary ? 4 : -(0.12 + (escapingWolf ? 1.8 : 0.7) * speed * speed) / g.endurance),
             0,
             100,
           );
@@ -3228,6 +3311,7 @@ export class World {
           a.z *= WORLD_RADIUS / radius;
           if (speed > 0) a.angle += Math.PI * 0.65;
         }
+        a.visiblyMoving = Math.abs(a.x - previousX) + Math.abs(a.z - previousZ) > 0.04 * dt;
         a.energy -=
           dt *
           thermal.metabolism * (isFlyingInsect(a.species) || a.species === "ant" ? 0.28 : 1) *
@@ -3251,7 +3335,7 @@ export class World {
             0.015 / g.maturation +
             0.025 * (g.droughtTolerance + g.immunity + g.swimming) +
             0.075 * g.size * g.length +
-            (wolfRoaming ? 0.055 : 0.09) * speed * speed * g.size +
+            (wolfRoaming || huntingState === "Pursuing prey" ? 0.055 : 0.09) * speed * speed * g.size +
             0.02 * g.cadence * g.cadence +
             (a.species === "snake" ? 0 : 0.025 * g.limbs) +
             0.005 * g.neurons +
@@ -3321,6 +3405,7 @@ export class World {
         if (
           (aerialPrey ? Math.abs(a.altitude - aerialPrey.altitude) < 0.45 : a.altitude < 0.6) &&
           !needState &&
+          !(a.species === "frog" && a.restTimer > 0) &&
           target &&
           (pursued ? Math.hypot(pursued.x - a.x, pursued.z - a.z) : distance) < reach &&
           (!("genes" in target) || (!shelteredInAntHill(target) && ((a.species !== "frog" && a.species !== "scorpion" &&
@@ -3331,16 +3416,27 @@ export class World {
         ) {
           if (!("genes" in target)) {
             const p = target as Plant;
-            const { removed, eaten: bite } = harvestPlant(p, a, dt, this.treeBrowseDamage);
-            if (bite > 0 && !a.seedCargo && this.random() < dt * 0.25)
-              collectSeed(this.seedBank, a, p, a.species === "mouse" && a.energy >= 55 ? "cache" : "gut", this.time);
-            if (isInsect(a.species) && bite > 0 && a.energy < ANIMAL_ENERGY_CAPACITY) markInsectFeeding(a);
-            ingestPlantFood(this.foodTotals, a, p, bite);
-            if (a.species === "bug") {
-              const soil = this.weather.land![landIndex(p.x, p.z)];
-              soil.litter = clamp(soil.litter + removed * 0.008, 0, 1);
+            if (worker && !a.antLoad) {
+              const crop = gatherAntCrop(p, a, this.treeBrowseDamage);
+              const meal = workerShare(a, crop.energy);
+              ingest(this.foodTotals, a, crop.source, meal);
+              if (crop.energy > meal) a.antLoad = { food: "crop", energy: crop.energy - meal, source: p.id, points: [{x:p.x,z:p.z}] };
+              if (crop.energy > 0) {
+                markInsectFeeding(a);
+                a.state = "Eating";
+              }
+            } else {
+              const { removed, eaten: bite } = harvestPlant(p, a, dt, this.treeBrowseDamage);
+              if (bite > 0 && !a.seedCargo && this.random() < dt * 0.25)
+                collectSeed(this.seedBank, a, p, a.species === "mouse" && a.energy >= 55 ? "cache" : "gut", this.time);
+              if (isInsect(a.species) && bite > 0 && a.energy < ANIMAL_ENERGY_CAPACITY) markInsectFeeding(a);
+              ingestPlantFood(this.foodTotals, a, p, bite);
+              if (a.species === "bug") {
+                const soil = this.weather.land![landIndex(p.x, p.z)];
+                soil.litter = clamp(soil.litter + removed * 0.008, 0, 1);
+              }
+              if (bite > 0) a.state = "Eating";
             }
-            if (bite > 0) a.state = "Eating";
           } else {
             const prey = target as Animal;
             const preyLarger = ambusher && grownBodySize(prey) > grownBodySize(a);
@@ -3361,7 +3457,7 @@ export class World {
             let damage = bite * ageVulnerability(prey) * illnessVulnerability(prey);
             const swallowedWhole = insectHunt &&
               grownBodySize(prey) < grownBodySize(a);
-            const decisiveCatch = !!mousePrey && !protectedBaby;
+            const decisiveCatch = (!!mousePrey || (!!shorePrey && prey.species === "frog" && grownBodySize(prey) < grownBodySize(a))) && !protectedBaby;
             if (swallowedWhole || decisiveCatch) damage = prey.energy;
             if (a.species === "spider" && retrieving && isInsect(prey.species) &&
                 prey.webOwnerId === a.id && (prey.webHeldUntilAge ?? 0) > prey.age) {
@@ -3385,6 +3481,7 @@ export class World {
             if (prey.energy <= 0) {
               prey.deathCause = "predation";
               prey.killedBy = a.id;
+              if (a.species === "frog" && isInsect(prey.species)) a.restTimer = 4;
               if (hunter || ambusher) {
                 a.mealEnergy = mealYield(prey, a);
                 a.mealSpecies = prey.species;
@@ -3405,12 +3502,6 @@ export class World {
                 : huntingState || "Stalking"
               : huntingState || "Hunting";
           }
-        }
-        if (hill?.queen && a.id !== hill.queen && !a.antLoad && a.energy > 35 &&
-            (a.state === "Eating" || a.state === "Eating mushrooms")) {
-          const surplus = Math.min(12, a.energy - 30);
-          a.antLoad = { food: "crop", energy: surplus };
-          a.energy -= surplus;
         }
         a.energy = Math.min(a.energy, ANIMAL_ENERGY_CAPACITY);
         if (

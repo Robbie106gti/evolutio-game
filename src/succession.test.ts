@@ -168,7 +168,7 @@ assert((approximateIllness.animals.find(a => a.id === susceptible.id)?.infection
   "Approximate mode applies the same crowding and small-population protection");
 const crowds = new World(99);
 crowds.animals = [];
-const crowdedSpecies = ["bug", "mouse", "fish"] as const;
+const crowdedSpecies = ["bug", "mouse", "fish", "ant"] as const;
 for (const species of crowdedSpecies)
   for (let i = 0; i < 32; i++) {
     const animal = crowds.addAnimal("grazer", undefined, species);
@@ -178,12 +178,13 @@ for (const species of crowdedSpecies)
 const patch = landIndex(-30, 25);
 const outbreak = prepareAnimalDisease(crowds.animals);
 for (const animal of crowds.animals) outbreak.update(animal, patch, 1, 5);
-const [crowdedBug, crowdedMouse, crowdedFish] =
+const [crowdedBug, crowdedMouse, crowdedFish, crowdedAnt] =
   crowdedSpecies.map(s => crowds.animals.find(a => a.species === s)!);
 assert(crowdedBug.infection > crowdedMouse.infection && !hasBreedingHealth(crowdedBug),
   "Dense bugs face stronger disease pressure and stop breeding earlier");
 assert(crowdedFish.infection < crowdedMouse.infection && hasBreedingHealth(crowdedFish),
   "A school of fish is less vulnerable to fungal exposure on the same patch");
+assert(crowdedAnt.infection < crowdedMouse.infection && hasBreedingHealth(crowdedAnt), "A normal ant colony tolerates crowded fungal exposure");
 const fungalOutbreak = new World(99, undefined, true);
 fungalOutbreak.animals = [];
 fungalOutbreak.plants = [];

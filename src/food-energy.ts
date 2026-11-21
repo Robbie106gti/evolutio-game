@@ -30,6 +30,10 @@ export function mealYield(prey: Animal, predator?: Animal) {
     const relativeVolume = (length / grownBodySize(predator)) ** 3;
     return ANIMAL_ENERGY_CAPACITY * relativeVolume / (0.4 + relativeVolume);
   }
+  if (predator?.species === "bird" && prey.species === "frog") {
+    const relativeVolume = (length / grownBodySize(predator)) ** 3;
+    return ANIMAL_ENERGY_CAPACITY * relativeVolume / (0.35 + relativeVolume);
+  }
   const volume = length ** 3;
   return ANIMAL_ENERGY_CAPACITY * volume / (0.75 + volume);
 }
@@ -92,6 +96,31 @@ export function growPlantLiquid(plant: Plant, dt: number) {
   if (!plantLiquid(plant) || plant.health <= 0) return;
   const productivity = plant.health / 100 * plant.energy / PLANTS[plant.kind].capacity;
   plant.liquidFood = Math.min(MAX_PLANT_LIQUID, availableLiquid(plant) + dt * 0.08 * productivity);
+}
+
+// A worker packs a finite load directly from the patch. Seeds and ripe
+// liquids can be collected without stripping foliage from the plant.
+export function antCropAvailable(p: Plant) {
+  return p.health > 0 && (availableSeeds(p) > 0.05 ||
+    (!!plantLiquid(p) && availableLiquid(p) > 0.05) || worthBrowsing(p, 45, "ant"));
+}
+
+export function gatherAntCrop(p: Plant, ant: Animal, damage: TreeBrowseDamage): { source: Food; energy: number } {
+  const liquid = plantLiquid(p);
+  if (liquid && availableLiquid(p) > 0.05) {
+    const amount = Math.min(2, availableLiquid(p));
+    p.liquidFood = availableLiquid(p) - amount;
+    return { source: liquid, energy: amount * 5 };
+  }
+  const seeds = availableSeeds(p);
+  if (seeds > 0.05) {
+    const amount = Math.min(4, seeds);
+    p.seedFood = seeds - amount;
+    return { source: SEED_FOOD[p.kind].label, energy: amount * SEED_NUTRITION };
+  }
+  const bite = grazePlant(p, "ant", 1);
+  if (p.kind === "tree" && bite.removed) damage.ant = (damage.ant ?? 0) + bite.removed;
+  return { source: p.kind, energy: foliageEnergy(ant, p, bite.eaten) };
 }
 
 export function harvestPlant(plant: Plant, animal: Animal, dt: number, treeDamage?: TreeBrowseDamage) {

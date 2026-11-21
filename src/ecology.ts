@@ -1,3 +1,4 @@
+import { isInsect } from "./species.ts";
 import { landIndex } from "./terrain.ts";
 import { illnessVulnerability } from "./animal-disease.ts";
 import { recycleLitter } from "./decomposition.ts";
@@ -250,6 +251,24 @@ export function concealedAmbush(a: Animal, terrain: ReturnType<typeof habitat>) 
     (terrain.cover >= 0.15 || (a.species === "spider" ? terrain.sand : terrain.name === "Desert"));
 }
 
+const mammalSenses = {
+  cat: { sight: 1.45, scent: 0.65 },
+  fox: { sight: 1.4, scent: 0.95 },
+  wolf: { sight: 1.5, scent: 1.15 },
+} as const;
+
+function huntingSenses(a: Animal) {
+  if (a.species === "cat" || a.species === "fox" || a.species === "wolf") return mammalSenses[a.species];
+}
+
+export const visualSearchRadius = (a: Animal) =>
+  a.genes.sense * (a.species === "bird" ? 1.8 : huntingSenses(a)?.sight ?? 1);
+
+export function visiblyMoving(a: Animal) {
+  return a.visiblyMoving ?? !["Resting", "Sleeping", "Sheltering", "Waiting in ambush",
+    "Foraging worms", "Basking", "In den", "In nest", "Drinking"].includes(a.state);
+}
+
 export function detectionRange(
   observer: Animal,
   prey: Animal,
@@ -257,7 +276,11 @@ export function detectionRange(
   light: number,
   sheltered = false,
 ) {
-  if (concealedAmbush(prey, terrain)) return Math.min(0.9, 0.45 * observer.genes.eyesight);
+  if (isInsect(observer.species) && !visiblyMoving(prey)) return 0;
+  // Nearby ground prey can be smelled in darkness. A den muffles its scent.
+  const scent = prey.altitude < 0.6 ? (huntingSenses(observer)?.scent ?? 0) *
+    observer.genes.sense * (sheltered ? 0.18 : 1) : 0;
+  if (concealedAmbush(prey, terrain)) return Math.max(scent, Math.min(0.9, 0.45 * observer.genes.eyesight));
   const concealment = camouflage(prey, terrain);
   const motion = [
     "Resting",
@@ -277,10 +300,16 @@ export function detectionRange(
     ? observer.species === "spider" ? observer.genes.sense * 0.8
       : Math.min(5, observer.genes.sense * 0.65)
     : 0;
+  // From above, movement in open ground or air is a stronger cue than colour.
+  const airborneSearch = observer.species === "bird" && observer.birdDiet === "insectivore" &&
+    isInsect(prey.species) &&
+    observer.altitude > 0.6 && !sheltered && (motion > 1 || prey.altitude > 0.3)
+    ? visualSearchRadius(observer) * observer.genes.eyesight * (0.2 + 0.65 * light) *
+      (1 - 0.5 * terrain.cover) : 0;
   return Math.max(
-    0.8, vibrationRange,
+    0.8, scent, vibrationRange, airborneSearch,
     (prey.species === "bug" ? 0.65 : 1) *
-      observer.genes.sense *
+      visualSearchRadius(observer) *
       observer.genes.eyesight *
       (0.22 + 0.78 * light) *
       (1 - 0.62 * concealment) *

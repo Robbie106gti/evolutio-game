@@ -163,6 +163,7 @@ export interface Animal {
   cooldown: number;
   genes: Genes;
   state: AnimalState;
+  visiblyMoving?: boolean;
 }
 
 export interface Plant {

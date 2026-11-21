@@ -78,6 +78,20 @@ for (const preySpecies of ["scorpion", "spider", "frog", "turtle"] as const) {
   assert(prey.killedBy === predator.id && !!hunt.world.foodTotals.bird?.[preySpecies],
     "The bird can catch and eat a small " + preySpecies);
 }
+// Start in cruising flight. A grounded bird and weakened prey would also pass
+// a contact-only test, even if the approach or whole-meal credit broke.
+{
+  const { world, predator } = setup("bird");
+  world.time = 90;
+  Object.assign(predator, { age: 60, energy: 35, birdDiet: "raptor", angle: 0, altitude: 3 });
+  predator.genes.size = 1;
+  const frog = world.addAnimal("hunter", undefined, "frog");
+  Object.assign(frog, { x: predator.x + 3, z: predator.z, age: 40, energy: 80, hydration: 100 });
+  Object.assign(frog.genes, { size: 0.8, speed: 0.6 });
+  for (let i = 0; i < 120 && !frog.killedBy; i++) world.step(0.1);
+  assert(frog.killedBy === predator.id && predator.altitude > 0.1 &&
+    (world.foodTotals.bird?.frog ?? 0) > 40, "A raptor swoops on a healthy frog and eats a substantial meal");
+}
 const { world, predator } = setup();
 const prey = world.addAnimal("grazer", undefined, "mouse");
 prey.x = -24;
@@ -592,5 +606,23 @@ pursuit.predator.parent = parentBird.id;
 const airborneFly = pursuit.world.addAnimal("grazer", undefined, "fly");
 Object.assign(airborneFly, { x: pursuit.predator.x + 2, z: pursuit.predator.z, age: 12, altitude: 0.9, angle: 0 });
 airborneFly.genes.size = 0.5;
+landAt(pursuit.world.weather.land, pursuit.predator.x, pursuit.predator.z).fungus = 0.9;
 for (let i=0;i<70 && airborneFly.energy>0;i++) pursuit.world.step(0.1);
 assert(airborneFly.killedBy === pursuit.predator.id, "Independent young bird pursues a moving fly before following its parent");
+
+const encounter = new World(52);
+encounter.animals = [];
+encounter.plants = [];
+const curious = encounter.addAnimal("grazer", undefined, "bug");
+const stillFrog = encounter.addAnimal("hunter", undefined, "frog");
+Object.assign(curious, { x: -30, z: 25, age: 60, energy: 65, hydration: 100, angle: 0 });
+Object.assign(curious.genes, { activeFraction: 1, preferredMoisture: 0.4 });
+Object.assign(stillFrog, { x: -28, z: 25, age: 50, energy: 130, hydration: 100, visiblyMoving: false, state: "Resting" });
+encounter.time = 97 - curious.id % 16;
+encounter.step(0.1);
+assert(curious.state === "Investigating frog" && !curious.sensedThreat,
+  "An idle bug can investigate a sitting frog without recognizing it as a predator");
+Object.assign(stillFrog, { visiblyMoving: true, x: curious.x + 1, z: curious.z });
+encounter.step(0.1);
+assert(String(curious.state) === "Fleeing" && curious.sensedThreat === stillFrog.id,
+  "Movement reveals the frog and interrupts curiosity");

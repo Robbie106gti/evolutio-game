@@ -16,6 +16,7 @@ import { supportsApproximation } from "./approximate.ts";
 import {
   archivedIslands,
   rotateIsland,
+  recoverUnreadableIsland,
   islandStorage,
   readBrowserSlot,
   saveBrowserSlot,
@@ -1315,7 +1316,7 @@ async function showLevels() {
   const dialog = $("level-select") as HTMLDialogElement;
   $("level-cards").innerHTML = levelCards(islandStorage);
   $("level-error").textContent = saveBlocked
-    ? "Your sandbox save could not be loaded and is preserved. You can still start or continue another island."
+    ? "Open a sandbox backup or start a new sandbox from the Verdant Island card."
     : "";
   const archives = $("island-archives");
   archives.replaceChildren();
@@ -1356,7 +1357,43 @@ $("lesson").addEventListener("click", (e) => {
     }
   }
 });
+async function recoverSandbox(file?: File) {
+  if (advanceWorker || islandTransition) return;
+  islandTransition = "switch";
+  try {
+    const expected = islandStorage.getItem(slotKey("sandbox"));
+    if (expected === null) throw new Error("Reload to refresh the sandbox slot.");
+    const next: Session = file ? decodeSave(await file.text()) : {
+      world: new World(crypto.getRandomValues(new Uint32Array(1))[0], LEVELS.sandbox, true, true),
+      level: initialProgress(LEVELS.sandbox), rate: 1, paused: false, selected: 0, follow: true,
+    };
+    if (next.world.level.id !== "sandbox") throw new Error("Choose a Verdant Island sandbox backup.");
+    if (!saveBlocked && world.level.id !== "sandbox" && !(await saveIsland()))
+      throw new Error("Could not save the current island before switching.");
+    if (pendingSave) await pendingSave;
+    islandTransition = "import";
+    const result = await recoverUnreadableIsland(expected, next);
+    activateIsland(result.next, result.raw);
+    ($("level-select") as HTMLDialogElement).close();
+    $("save-status").textContent = "Sandbox opened. Previous save archived.";
+  } catch (error) {
+    $("level-error").textContent = error instanceof Error ? error.message : "Could not open sandbox.";
+  } finally {
+    islandTransition = null;
+  }
+}
+$("level-cards").addEventListener("change", e => {
+  const input = e.target as HTMLInputElement;
+  if (input.matches("[data-sandbox-backup]") && input.files?.[0]) {
+    void recoverSandbox(input.files[0]);
+    input.value = "";
+  }
+});
 $("level-cards").addEventListener("click", async (e) => {
+  if ((e.target as HTMLElement).closest("[data-recover-sandbox]")) {
+    await recoverSandbox();
+    return;
+  }
   if (advanceWorker || islandTransition) return;
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>(
     "[data-open-level]",
